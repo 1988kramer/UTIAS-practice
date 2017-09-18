@@ -12,7 +12,7 @@ pause_time_between_frames=0.01; %[s]
 draw_measurements = 0;
 % Options END %
 
-n_robots = 5;
+%n_robots = 5;
 n_landmarks = length(Landmark_Groundtruth(:,1));
 
 % Plots and Figure Setup
@@ -36,7 +36,19 @@ r_landmark = 0.055;
 d_landmark = 2*r_landmark;
 
 % initial setup
-Robot = [Robot1_Groundtruth(:,2:4) Robot2_Groundtruth(:,2:4) Robot3_Groundtruth(:,2:4) Robot4_Groundtruth(:,2:4) Robot5_Groundtruth(:,2:4)];
+switch n_robots
+    case 1
+        Robot = [Robot1_Groundtruth(:,2:4)];
+    case 2
+        Robot = [Robot1_Groundtruth(:,2:4) Robot2_Groundtruth(:,2:4)];
+    case 3
+        Robot = [Robot1_Groundtruth(:,2:4) Robot2_Groundtruth(:,2:4) Robot3_Groundtruth(:,2:4)];
+    case 4
+        Robot = [Robot1_Groundtruth(:,2:4) Robot2_Groundtruth(:,2:4) Robot3_Groundtruth(:,2:4) Robot4_Groundtruth(:,2:4)];
+    case 5
+        Robot = [Robot1_Groundtruth(:,2:4) Robot2_Groundtruth(:,2:4) Robot3_Groundtruth(:,2:4) Robot4_Groundtruth(:,2:4) Robot5_Groundtruth(:,2:4)];
+end
+
 for i = 1:n_robots  
     x=Robot(1,i*3-2);
     y=Robot(1,i*3-1);

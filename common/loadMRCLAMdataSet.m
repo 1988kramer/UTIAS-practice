@@ -5,7 +5,7 @@
 % dataset into Matlab arrays. Run this script within the the dataset 
 % directory.
 
-n_robots = 5;
+n_robots = 3;
 
 disp('Parsing Dataset')
 disp('Reading barcode numbers')

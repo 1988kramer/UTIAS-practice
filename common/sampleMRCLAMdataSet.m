@@ -33,7 +33,7 @@ array_names = { 'Robot1_Groundtruth'; 'Robot1_Odometry';
                 'Robot4_Groundtruth'; 'Robot4_Odometry'; 
                 'Robot5_Groundtruth'; 'Robot5_Odometry'};
 oldData = 0;
-for name = 1:length(array_names)
+for name = 1:n_robots * 2
     disp(['sampling ' array_names{name}])
     eval(['oldData =' array_names{name} ';'])
 
@@ -93,7 +93,7 @@ array_names = { 'Robot1_Measurement';
                 'Robot4_Measurement';
                 'Robot5_Measurement'};
 oldData = 0;
-for name = 1:length(array_names)
+for name = 1:n_robots
     disp(['prcoessing ' array_names{name}])
     eval(['oldData =' array_names{name} ';'])
     newData=oldData;
