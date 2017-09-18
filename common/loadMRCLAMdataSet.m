@@ -4,9 +4,10 @@
 % Description: This scripts parses the 17 text files that make up a 
 % dataset into Matlab arrays. Run this script within the the dataset 
 % directory.
-function loadMRCLAMdataSet(n_robots);
+function loadMRCLAMdataSet(n_robots)
 
-    n_robots = 3; % set to any value from 1-5 to set the number of robots
+    % parameters:
+    %   n_robots: set to any value from 1-5 to set the number of robots
 
     disp('Parsing Dataset')
     disp('Reading barcode numbers')
