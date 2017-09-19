@@ -59,9 +59,9 @@ for i = 1:size(Robots{1}.G(:,1))
     % if these don't change we could move this outside 
     % the surrounding for loop
     % also don't know how to calculate the measurement noise std_dev
-    Q_t = [sigma_range^2 0 0;
-           0 sigma_bearing^2 0;
-           0 0 sigma_id^2];
+    %Q_t = [sigma_range^2 0 0;
+    %       0 sigma_bearing^2 0;
+    %       0 0 sigma_id^2];
     
     % build vector of features observed at current time
     if Robots{1}.M(measurementIndex, time) == t
