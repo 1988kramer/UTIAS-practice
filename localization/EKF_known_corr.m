@@ -52,8 +52,8 @@ for i = 1:size(Robots{1}.G(:,1))
     poseUpdate = [(u_t(1) / u_t(2)) * ((-1 * sin(theta)) + sin1);
                   (u_t(1) / u_t(2)) * (cos(theta) - cos1)
                   u_t(2) * deltaT];
-    poseMeanHat = poseMean + poseUpdate;
-    poseCovHat = G_t * poseCov * G_t' + V_t * M_t * V_t';
+    poseMeanBar = poseMean + poseUpdate;
+    poseCovBar = G_t * poseCov * G_t' + V_t * M_t * V_t';
     
     % get standard deviations for measurement noise
     % if these don't change we could move this outside 
@@ -90,6 +90,41 @@ for i = 1:size(Robots{1}.G(:,1))
             measurementIndex = measurementIndex + 1;
         end
     end
-    % loop over all features
-    % left off at line 9
+    S = zeros(size(z,2),3,3);
+    zHat = zeros(size(z,2),3,1);
+    % loop over all features and compute Kalman gain
+    for i = 1:size(z, 2) % loop over every observed landmark
+        j = z(3,i);
+        % get coordinates of observed landmark
+        m = Landmark_Groundtruth(j - 5, 2:3);
+        % compute predicted range and bearing
+        xDist = m(1) - poseMean(1);
+        yDist = m(2) - poseMean(2);
+        q = xDist^2 + yDist^2;
+        zHat(i,:,:) = [sqrt(q);
+                       atan2(yDist, xDist) - poseMean(3);
+                       m];
+        % calculate Jacobian of h (line 13)
+        H = [(-1 * (xDist / sqrt(q))) (-1 * (yDist / sqrt(q))) 0;
+             (yDist / q) (-1 * (xDist / q)) -1
+             0 0 0];
+        S(i,:,:) = H * poseCov * H' + Q_t;
+        % compute Kalman gain
+        K = poseCov * H' * inv(S);
+        % K = S \ (poseCov * H'); % may be equivalent to above
+        % update pose mean and covariance estimates
+        poseMeanBar = poseMeanBar + K * (z - zHat);
+        poseCovBar = (eye(3) - (K * H)) * poseCovBar;
+    end
+    % update pose mean and covariance
+    poseMean = poseMeanBar;
+    poseCov = poseCovBar;
+    % calculate measurement probability
+    measurementProb = 1;
+    for i = 1:size(z,2)
+        detS = det(2 * pi * S(i,:,:))^(-0.5);
+        expErr = exp(-0.5 * (z(i,:,:) - zHat(i,:,:))' * inv(S(i,:,:)) * (z(i,:,:) - zHat(i,:,:)));
+        % expErr = exp(-0.5 * (S(i,:,:) \ (z(i,:,:) - zHat(i,:,:))') * (z(i,:,:) - zHat(i,:,:)));
+        measurementProb = measurementProb * detS * expErr;
+    end
 end
