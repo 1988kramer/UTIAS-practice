@@ -1,31 +1,47 @@
 addpath ../common;
 
-trans = 2;
-ang = 3;
-time = 1;
 deltaT = .02;
-alphas = zeros(1,6);
+alphas = [.01 .01 .01 .01 .01 .01]; % need to figure out how to set these
 
+% also don't know how to calculate the measurement noise std_dev
+sigma_range = .01;
+sigma_bearing = .01;
+sigma_id = 0;
+
+Q_t = [sigma_range^2 0 0;
+       0 sigma_bearing^2 0;
+       0 0 sigma_id^2];
+
+measurement_prob = 0;
 n_robots = 1;
 [Barcodes, Landmark_Groundtruth, Robots] = loadMRCLAMdataSet(n_robots);
-Robots = sampleMRCLAMdataSet(Robots, deltaT);
+[Robots, timesteps] = sampleMRCLAMdataSet(Robots, deltaT);
+
+% add pose estimate matrix to Robots
+Robots{1}.Est = zeros(size(Robots{1}.G,1), 4);
 
 % initialize time, and pose estimate
 t = 0;
+
 % need mean and covariance for the initial pose estimate
-poseMean = zeros(3, 1);
-poseCov = zeros(3,3);
+poseMean = [Robots{1}.G(1,2);
+            Robots{1}.G(1,3);
+            Robots{1}.G(1,4)];
+poseCov = [.001 .001 .001;
+           .001 .001 .001;
+           .001 .001 .001];
+       
 measurementIndex = 1;
 
 % loop through all odometry and measurement samples
 % updating the robot's pose estimate with each step
 % reference table 7.2 in Probabilistic Robotics
-for i = 1:size(Robots{1}.G(:,1))
+for i = 1:size(Robots{1}.G, 1)
     theta = poseMean(3, 1);
     % update time
-    t = Robots{i}.O(i, time);
+    t = Robots{1}.O(i, 1);
     % update movement vector
-    u_t = [Robots{1}.O(i, trans); Robots{i}.O(i, ang)];
+    u_t = [Robots{1}.O(i, 2); Robots{1}.O(i, 3)];
     
     % calculate a bunch of commonly used terms
     sin1 = sin(theta + u_t(2) * deltaT);
@@ -36,17 +52,16 @@ for i = 1:size(Robots{1}.G(:,1))
     minusCos = (cos(theta) - cos1);
     
     % calculate the movement Jacobian
-    G_t = [1 0 ((u_t(1) / u_t(2))*(-1 * plusCos));
-           0 1 ((u_t(1) / u_t(2))*(-1 * plusSin));
+    G_t = [1 0 (u_t(1) / u_t(2)) * ((-1 * cos(theta)) + plusCos);
+           0 1 (u_t(1) / u_t(2)) * ((-1 * sin(theta)) + plusSin);
            0 0 1];
     % calculate motion covariance in control space
     M_t = [(alphas(1) * abs(u_t(1)) + alphas(2) * abs(u_t(2)))^2 0;
            0 (alphas(3) * abs(u_t(1)) + alphas(4) * abs(u_t(2)))^2];
     % calculate Jacobian to transform motion covariance to state space
     V_t = [(-1*plusSin/u_t(2)) (((u_t(1)*minusSin)/(u_t(2)^2))+(u_t(1)*cos1*deltaT)/u_t(2));
-           (minusCos/u_t(2)) (((-1*minusCos)/(u_t(2)^2))+(u_t(1)*sin1*deltaT*deltaT)/u_t(2));
+           (minusCos/u_t(2)) (((-1*minusCos)/(u_t(2)^2))+(u_t(1)*sin1*deltaT)/u_t(2));
            0 deltaT];
-    % that was easy, right?
     
     % calculate pose update from odometry
     poseUpdate = [(u_t(1) / u_t(2)) * ((-1 * sin(theta)) + sin1);
@@ -55,31 +70,21 @@ for i = 1:size(Robots{1}.G(:,1))
     poseMeanBar = poseMean + poseUpdate;
     poseCovBar = G_t * poseCov * G_t' + V_t * M_t * V_t';
     
-    % get standard deviations for measurement noise
-    % if these don't change we could move this outside 
-    % the surrounding for loop
-    % also don't know how to calculate the measurement noise std_dev
-    %Q_t = [sigma_range^2 0 0;
-    %       0 sigma_bearing^2 0;
-    %       0 0 sigma_id^2];
+    
     
     % build vector of features observed at current time
-    if Robots{1}.M(measurementIndex, time) == t
-        % ignore measurements to other robots
-        if Robots{1}.M(measurementIndex, time) > 5
-            range = Robots{1}.M(measurementIndex, 3);
-            bearing = Robots{1}.M(measurementIndex, 4);
-            id = Robots{1}.M(measurementIndex, 2);
-            z = [range;
-                 bearing;
-                 id];
-            measurementIndex = measurementIndex + 1;
-        end
-    end
-    % record additional measurements if more than 
-    % one happens at time t
-    while Robots{1}.M(measurementIndex, time) == t
-        if Robots{1}.M(measurementIndex, time) > 5
+    if Robots{1}.M(measurementIndex, 1) == t && Robots{i}.M(measurementIndex, 2) > 5
+        range = Robots{1}.M(measurementIndex, 3);
+        bearing = Robots{1}.M(measurementIndex, 4);
+        id = Robots{1}.M(measurementIndex, 2);
+        z = [range;
+             bearing;
+             id];
+        measurementIndex = measurementIndex + 1;
+    
+        % record additional measurements if more than 
+        % one happens at time t
+        while Robots{1}.M(measurementIndex, 1) == t && Robots{i}.M(measurementIndex, 2) > 5
             range = Robots{1}.M(measurementIndex, 3);
             bearing = Robots{1}.M(measurementIndex, 4);
             id = Robots{1}.M(measurementIndex, 2);
@@ -89,42 +94,61 @@ for i = 1:size(Robots{1}.G(:,1))
             z = [z nextCol];
             measurementIndex = measurementIndex + 1;
         end
+        S = zeros(size(z,2),3,3);
+        zHat = zeros(3, size(z,2));
+
+        % loop over all features and compute Kalman gain
+        for k = 1:size(z, 2) % loop over every observed landmark
+            j = z(3,k);
+
+            % get coordinates of observed landmark
+            m = Landmark_Groundtruth(j - 5, 2:3);
+
+            % compute predicted range and bearing
+            xDist = m(1) - poseMeanBar(1);
+            yDist = m(2) - poseMeanBar(2);
+            q = xDist^2 + yDist^2;
+            zHat(:,k) = [sqrt(q);
+                         atan2(yDist, xDist) - poseMean(3);
+                         j];
+
+            % calculate Jacobian of h (line 13)
+            H = [(-1 * (xDist / sqrt(q))) (-1 * (yDist / sqrt(q))) 0;
+                 (yDist / q) (-1 * (xDist / q)) -1
+                 0 0 0];
+            S(k,:,:) = H * poseCov * H' + Q_t;
+
+            % compute Kalman gain
+            % K = poseCov * H' * inv(S);
+            K = S(k,:,:) \ (poseCov * H'); % may be equivalent to above
+
+            % update pose mean and covariance estimates
+            poseMeanBar = poseMeanBar + K * (z(:,k) - zHat(:,k));
+            poseCovBar = (eye(3) - (K * H)) * poseCovBar;
+        end
+        
+            % calculate measurement probability
+        measurementProb = 1;
+        for k = 1:size(z,2)
+            detS = det(2 * pi * S(k,:,:))^(-0.5);
+            % expErr = exp(-0.5 * (z(i,:,:) - zHat(i,:,:))' * inv(S(i,:,:)) * (z(i,:,:) - zHat(i,:,:)));
+            expErr = exp(-0.5 * (S(k,:,:) \ (z(:,k) - zHat(:,k))') * (z(:,k) - zHat(:,k)));
+            measurementProb = measurementProb * detS * expErr;
+        end
     end
-    S = zeros(size(z,2),3,3);
-    zHat = zeros(size(z,2),3,1);
-    % loop over all features and compute Kalman gain
-    for i = 1:size(z, 2) % loop over every observed landmark
-        j = z(3,i);
-        % get coordinates of observed landmark
-        m = Landmark_Groundtruth(j - 5, 2:3);
-        % compute predicted range and bearing
-        xDist = m(1) - poseMean(1);
-        yDist = m(2) - poseMean(2);
-        q = xDist^2 + yDist^2;
-        zHat(i,:,:) = [sqrt(q);
-                       atan2(yDist, xDist) - poseMean(3);
-                       m];
-        % calculate Jacobian of h (line 13)
-        H = [(-1 * (xDist / sqrt(q))) (-1 * (yDist / sqrt(q))) 0;
-             (yDist / q) (-1 * (xDist / q)) -1
-             0 0 0];
-        S(i,:,:) = H * poseCov * H' + Q_t;
-        % compute Kalman gain
-        K = poseCov * H' * inv(S);
-        % K = S \ (poseCov * H'); % may be equivalent to above
-        % update pose mean and covariance estimates
-        poseMeanBar = poseMeanBar + K * (z - zHat);
-        poseCovBar = (eye(3) - (K * H)) * poseCovBar;
-    end
+    
     % update pose mean and covariance
     poseMean = poseMeanBar;
     poseCov = poseCovBar;
-    % calculate measurement probability
-    measurementProb = 1;
-    for i = 1:size(z,2)
-        detS = det(2 * pi * S(i,:,:))^(-0.5);
-        expErr = exp(-0.5 * (z(i,:,:) - zHat(i,:,:))' * inv(S(i,:,:)) * (z(i,:,:) - zHat(i,:,:)));
-        % expErr = exp(-0.5 * (S(i,:,:) \ (z(i,:,:) - zHat(i,:,:))') * (z(i,:,:) - zHat(i,:,:)));
-        measurementProb = measurementProb * detS * expErr;
-    end
+    
+
+    % add pose mean to estimated position vector
+    Robots{1}.Est(i,:) = [t poseMean(1) poseMean(2) poseMean(3)];
+    % calculate error between mean pose and groundtruth
+    groundtruth = [Robots{1}.G(i, 2); 
+                   Robots{1}.G(i, 3); 
+                   Robots{1}.G(i, 4)];
+    error = groundtruth - poseMean;
 end
+
+animateMRCLAMdataSet(Robots, Landmark_Groundtruth, timesteps, deltaT);
