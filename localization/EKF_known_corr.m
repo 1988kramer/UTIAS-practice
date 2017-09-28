@@ -4,9 +4,9 @@ deltaT = .02;
 alphas = [.01 .01 .01 .01 .01 .01]; % need to figure out how to set these
 
 % also don't know how to calculate the measurement noise std_dev
-sigma_range = .01;
-sigma_bearing = .01;
-sigma_id = 0;
+sigma_range = 0.01;
+sigma_bearing = 0.01;
+sigma_id = 0.01;
 
 Q_t = [sigma_range^2 0 0;
        0 sigma_bearing^2 0;
@@ -27,11 +27,12 @@ t = 0;
 poseMean = [Robots{1}.G(1,2);
             Robots{1}.G(1,3);
             Robots{1}.G(1,4)];
-poseCov = [.001 .001 .001;
-           .001 .001 .001;
-           .001 .001 .001];
+poseCov = [.01 .01 .01;
+           .01 .01 .01;
+           .01 .01 .01];
        
 measurementIndex = 1;
+angularCorrect = .00001;
 
 % loop through all odometry and measurement samples
 % updating the robot's pose estimate with each step
@@ -39,9 +40,14 @@ measurementIndex = 1;
 for i = 1:size(Robots{1}.G, 1)
     theta = poseMean(3, 1);
     % update time
-    t = Robots{1}.O(i, 1);
+    t = Robots{1}.G(i, 1);
     % update movement vector
     u_t = [Robots{1}.O(i, 2); Robots{1}.O(i, 3)];
+    
+    if u_t(2) == 0
+        u_t(2) = angularCorrect;
+        angularCorrect = angularCorrect * -1;
+    end
     
     % calculate a bunch of commonly used terms
     sin1 = sin(theta + u_t(2) * deltaT);
@@ -71,33 +77,34 @@ for i = 1:size(Robots{1}.G, 1)
     poseCovBar = G_t * poseCov * G_t' + V_t * M_t * V_t';
     
     
-    
     % build vector of features observed at current time
-    if Robots{1}.M(measurementIndex, 1) == t && Robots{i}.M(measurementIndex, 2) > 5
-        range = Robots{1}.M(measurementIndex, 3);
-        bearing = Robots{1}.M(measurementIndex, 4);
-        id = Robots{1}.M(measurementIndex, 2);
-        z = [range;
-             bearing;
-             id];
-        measurementIndex = measurementIndex + 1;
+    z = zeros(3,1);
     
-        % record additional measurements if more than 
-        % one happens at time t
-        while Robots{1}.M(measurementIndex, 1) == t && Robots{i}.M(measurementIndex, 2) > 5
+    while Robots{1}.M(measurementIndex, 1) - t < .005 && measurementIndex < size(Robots{1}.M,1)
+        landmarkID = Robots{1}.M(measurementIndex,2);
+        if landmarkID > 5 && landmarkID < 21
             range = Robots{1}.M(measurementIndex, 3);
             bearing = Robots{1}.M(measurementIndex, 4);
-            id = Robots{1}.M(measurementIndex, 2);
-            nextCol = [range;
-                       bearing;
-                       id];
-            z = [z nextCol];
-            measurementIndex = measurementIndex + 1;
+            id = landmarkID;
+            if z(3) < .005
+                z = [range;
+                     bearing;
+                     id];
+            else
+                newZ = [range;
+                        bearing;
+                        id];
+                z = [z newZ];
+            end
         end
-        S = zeros(size(z,2),3,3);
-        zHat = zeros(3, size(z,2));
-
-        % loop over all features and compute Kalman gain
+        measurementIndex = measurementIndex + 1;
+    end
+    S = zeros(size(z,2),3,3);
+    zHat = zeros(3, size(z,2));
+    
+    % if features are observed
+    % loop over all features and compute Kalman gain
+    if z(3,1) > 1
         for k = 1:size(z, 2) % loop over every observed landmark
             j = z(3,k);
 
@@ -119,21 +126,21 @@ for i = 1:size(Robots{1}.G, 1)
             S(k,:,:) = H * poseCov * H' + Q_t;
 
             % compute Kalman gain
-            % K = poseCov * H' * inv(S);
-            K = S(k,:,:) \ (poseCov * H'); % may be equivalent to above
+            K = poseCov * H' * inv(squeeze(S(k,:,:)));
+            %K = squeeze(S(k,:,:)) \ (poseCov * H'); % may be equivalent to above
 
             % update pose mean and covariance estimates
             poseMeanBar = poseMeanBar + K * (z(:,k) - zHat(:,k));
             poseCovBar = (eye(3) - (K * H)) * poseCovBar;
-        end
-        
+
             % calculate measurement probability
-        measurementProb = 1;
-        for k = 1:size(z,2)
-            detS = det(2 * pi * S(k,:,:))^(-0.5);
-            % expErr = exp(-0.5 * (z(i,:,:) - zHat(i,:,:))' * inv(S(i,:,:)) * (z(i,:,:) - zHat(i,:,:)));
-            expErr = exp(-0.5 * (S(k,:,:) \ (z(:,k) - zHat(:,k))') * (z(:,k) - zHat(:,k)));
-            measurementProb = measurementProb * detS * expErr;
+            measurementProb = 1;
+            for k = 1:size(z,2)
+                detS = det(2 * pi * squeeze(S(k,:,:)))^(-0.5);
+                expErr = exp(-0.5 * (z(:,k) - zHat(:,k))' * inv(squeeze(S(k,:,:))) * (z(:,k) - zHat(:,k)));
+                %expErr = exp(-0.5 * (squeeze(S(k,:,:)) \ (z(:,k) - zHat(:,k))') * (z(:,k) - zHat(:,k)));
+                measurementProb = measurementProb * detS * expErr;
+            end
         end
     end
     
