@@ -27,12 +27,12 @@ t = 0;
 poseMean = [Robots{1}.G(1,2);
             Robots{1}.G(1,3);
             Robots{1}.G(1,4)];
-poseCov = [.01 .01 .01;
-           .01 .01 .01;
-           .01 .01 .01];
+poseCov = [0.0 0.0 0.0;
+           0.0 0.0 0.0;
+           0.0 0.0 0.0];
        
-measurementIndex = 1;
-angularCorrect = .00001;
+measurementIndex = 2;
+angularCorrect = .01;
 
 % loop through all odometry and measurement samples
 % updating the robot's pose estimate with each step
@@ -75,12 +75,14 @@ for i = 1:size(Robots{1}.G, 1)
                   u_t(2) * deltaT];
     poseMeanBar = poseMean + poseUpdate;
     poseCovBar = G_t * poseCov * G_t' + V_t * M_t * V_t';
-    
+    if (mod(uint32(t*100), 100) == 0)
+        1;
+    end
     
     % build vector of features observed at current time
     z = zeros(3,1);
     
-    while Robots{1}.M(measurementIndex, 1) - t < .005 && measurementIndex < size(Robots{1}.M,1)
+    while (Robots{1}.M(measurementIndex, 1) - t < .005) && (measurementIndex < size(Robots{1}.M,1))
         landmarkID = Robots{1}.M(measurementIndex,2);
         if landmarkID > 5 && landmarkID < 21
             range = Robots{1}.M(measurementIndex, 3);
@@ -115,8 +117,16 @@ for i = 1:size(Robots{1}.G, 1)
             xDist = m(1) - poseMeanBar(1);
             yDist = m(2) - poseMeanBar(2);
             q = xDist^2 + yDist^2;
+            
+            pred_bear = atan2(yDist, xDist) - poseMean(3);
+            while pred_bear < -pi
+                pred_bear = pred_bear + 2*pi;
+            end
+            while pred_bear > pi
+                pred_bear = pred_bear - 2*pi;
+            end
             zHat(:,k) = [sqrt(q);
-                         atan2(yDist, xDist) - poseMean(3);
+                         pred_bear;
                          j];
 
             % calculate Jacobian of h (line 13)
@@ -126,27 +136,36 @@ for i = 1:size(Robots{1}.G, 1)
             S(k,:,:) = H * poseCov * H' + Q_t;
 
             % compute Kalman gain
-            K = poseCov * H' * inv(squeeze(S(k,:,:)));
-            %K = squeeze(S(k,:,:)) \ (poseCov * H'); % may be equivalent to above
+            %K = poseCov * H' * inv(squeeze(S(k,:,:)));
+            K = squeeze(S(k,:,:)) \ (poseCov * H'); % may be equivalent to above
 
             % update pose mean and covariance estimates
             poseMeanBar = poseMeanBar + K * (z(:,k) - zHat(:,k));
             poseCovBar = (eye(3) - (K * H)) * poseCovBar;
-
-            % calculate measurement probability
-            measurementProb = 1;
-            for k = 1:size(z,2)
-                detS = det(2 * pi * squeeze(S(k,:,:)))^(-0.5);
-                expErr = exp(-0.5 * (z(:,k) - zHat(:,k))' * inv(squeeze(S(k,:,:))) * (z(:,k) - zHat(:,k)));
-                %expErr = exp(-0.5 * (squeeze(S(k,:,:)) \ (z(:,k) - zHat(:,k))') * (z(:,k) - zHat(:,k)));
-                measurementProb = measurementProb * detS * expErr;
-            end
         end
     end
     
     % update pose mean and covariance
     poseMean = poseMeanBar;
     poseCov = poseCovBar;
+    
+    while (poseMean(3) < -pi)
+        poseMean(3) = poseMean(3) + (2*pi);
+    end
+    while (poseMean(3) > pi)
+        poseMean(3) = poseMean(3) - (2*pi);
+    end
+    
+    % calculate measurement probability
+    measurementProb = 1;
+    if z(3,1) > 1
+        for k = 1:size(z,2)
+            detS = det(2 * pi * squeeze(S(k,:,:)))^(-0.5);
+            expErr = exp(-0.5 * (z(:,k) - zHat(:,k))' * inv(squeeze(S(k,:,:))) * (z(:,k) - zHat(:,k)));
+            %expErr = exp(-0.5 * (squeeze(S(k,:,:)) \ (z(:,k) - zHat(:,k))') * (z(:,k) - zHat(:,k)));
+            measurementProb = measurementProb * detS * expErr;
+        end
+    end
     
 
     % add pose mean to estimated position vector
