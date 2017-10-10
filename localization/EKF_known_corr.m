@@ -4,9 +4,9 @@ deltaT = .02;
 alphas = [.01 .01 .01 .01 .01 .01]; % need to figure out how to set these
 
 % also don't know how to calculate the measurement noise std_dev
-sigma_range = 0.01;
-sigma_bearing = 0.01;
-sigma_id = 0.01;
+sigma_range = 1.75;
+sigma_bearing = 1;
+sigma_id = 0.5;
 
 Q_t = [sigma_range^2 0 0;
        0 sigma_bearing^2 0;
@@ -22,14 +22,14 @@ Robots{1}.Est = zeros(size(Robots{1}.G,1), 4);
 
 % initialize time, and pose estimate
 t = 0;
-
+start = 1;
 % need mean and covariance for the initial pose estimate
-poseMean = [Robots{1}.G(1,2);
-            Robots{1}.G(1,3);
-            Robots{1}.G(1,4)];
-poseCov = [0.0 0.0 0.0;
-           0.0 0.0 0.0;
-           0.0 0.0 0.0];
+poseMean = [Robots{1}.G(start,2);
+            Robots{1}.G(start,3);
+            Robots{1}.G(start,4)];
+poseCov = [0.01 0.01 0.01;
+           0.01 0.01 0.01;
+           0.01 0.01 0.01];
        
 measurementIndex = 2;
 angularCorrect = .01;
@@ -37,7 +37,7 @@ angularCorrect = .01;
 % loop through all odometry and measurement samples
 % updating the robot's pose estimate with each step
 % reference table 7.2 in Probabilistic Robotics
-for i = 1:size(Robots{1}.G, 1)
+for i = start:size(Robots{1}.G, 1)
     theta = poseMean(3, 1);
     % update time
     t = Robots{1}.G(i, 1);
@@ -119,12 +119,7 @@ for i = 1:size(Robots{1}.G, 1)
             q = xDist^2 + yDist^2;
             
             pred_bear = atan2(yDist, xDist) - poseMean(3);
-            while pred_bear < -pi
-                pred_bear = pred_bear + 2*pi;
-            end
-            while pred_bear > pi
-                pred_bear = pred_bear - 2*pi;
-            end
+            
             zHat(:,k) = [sqrt(q);
                          pred_bear;
                          j];
@@ -133,11 +128,11 @@ for i = 1:size(Robots{1}.G, 1)
             H = [(-1 * (xDist / sqrt(q))) (-1 * (yDist / sqrt(q))) 0;
                  (yDist / q) (-1 * (xDist / q)) -1
                  0 0 0];
-            S(k,:,:) = H * poseCov * H' + Q_t;
+            S(k,:,:) = H * poseCovBar * H' + Q_t;
 
             % compute Kalman gain
-            %K = poseCov * H' * inv(squeeze(S(k,:,:)));
-            K = squeeze(S(k,:,:)) \ (poseCov * H'); % may be equivalent to above
+            K = poseCov * H' * inv(squeeze(S(k,:,:)));
+            %K = squeeze(S(k,:,:)) \ (poseCovBar * H'); % may be equivalent to above
 
             % update pose mean and covariance estimates
             poseMeanBar = poseMeanBar + K * (z(:,k) - zHat(:,k));
@@ -148,13 +143,6 @@ for i = 1:size(Robots{1}.G, 1)
     % update pose mean and covariance
     poseMean = poseMeanBar;
     poseCov = poseCovBar;
-    
-    while (poseMean(3) < -pi)
-        poseMean(3) = poseMean(3) + (2*pi);
-    end
-    while (poseMean(3) > pi)
-        poseMean(3) = poseMean(3) - (2*pi);
-    end
     
     % calculate measurement probability
     measurementProb = 1;
