@@ -1,19 +1,19 @@
 addpath ../common;
 
 deltaT = .02;
-alphas = [2 2 12 12 1 1]; % need to figure out how to set these
+alphas = [1 1 20 20 10 10]; % need to figure out how to set these
 
 % also don't know how to calculate the measurement noise std_dev
-sigma_range = 300;
-sigma_bearing = 300;
-sigma_id = 100;
+sigma_range = 100;
+sigma_bearing = 100;
+sigma_id = 50;
 
 Q_t = [sigma_range^2 0 0;
        0 sigma_bearing^2 0;
        0 0 sigma_id^2];
 
 measurement_prob = 0;
-n_robots = 2;
+n_robots = 1;
 robot_num = 1;
 [Barcodes, Landmark_Groundtruth, Robots] = loadMRCLAMdataSet(n_robots);
 [Robots, timesteps] = sampleMRCLAMdataSet(Robots, deltaT);
@@ -100,12 +100,13 @@ for i = start:size(Robots{robot_num}.G, 1)
     z = zeros(3,1);
     %
     while (Robots{robot_num}.M(measurementIndex, 1) - t < .005) && (measurementIndex < size(Robots{robot_num}.M,1))
+        barcode = Robots{robot_num}.M(measurementIndex,2);
+        landmarkID = 0;
         if (codeDict.isKey(barcode))
-            barcode = Robots{robot_num}.M(measurementIndex,2);
+            landmarkID = codeDict(barcode);
         else
             disp('key not found');
         end
-        landmarkID = codeDict(barcode);
         if landmarkID > 5 && landmarkID < 21
             range = Robots{robot_num}.M(measurementIndex, 3);
             bearing = Robots{robot_num}.M(measurementIndex, 4);
@@ -161,7 +162,7 @@ for i = start:size(Robots{robot_num}.G, 1)
                     atan2(yAct, xAct) - Robots{robot_num}.G(i,4);
                     j];
             % update pose mean and covariance estimates
-            poseMeanBar = poseMeanBar + K * (z(:,k) - zHat(:,k));
+            poseMeanBar = poseMeanBar + K * (zAct - zHat(:,k));
             poseCovBar = (eye(3) - (K * H)) * poseCovBar;
         end
     end

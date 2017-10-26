@@ -4,7 +4,7 @@
 % Description: This scripts samples the dataset at fixed intervals 
 % (default is 0.02s). Odometry data is interpolated using the recorded time. % Measurements are rounded to the nearest timestep. 
 % Run this script after loadMRCLAMdataSet.m
-function [Robots] = sampleMRCLAMdataSet(Robots, sample_time)
+function [Robots, timesteps] = sampleMRCLAMdataSet(Robots, sample_time)
 
     % sample_time = 0.02;
     
