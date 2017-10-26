@@ -80,15 +80,14 @@ for i = start:size(Robots{robot_num}.G, 1)
     V_t = [(-1*plusSin/u_t(2)) (((u_t(1)*minusSin)/(u_t(2)^2))+(u_t(1)*cos1*deltaT)/u_t(2));
            (minusCos/u_t(2)) (((-1*u_t(1)*minusCos)/(u_t(2)^2))+(u_t(1)*sin1*deltaT)/u_t(2));
            0 deltaT];
-    %{
+    
     % calculate pose update from odometry
-    poseUpdate = [u_t(1) * cos(theta) * deltaT;
-                  u_t(1) * sin(theta) * deltaT;
+    halfRot = (u_t(2) * deltaT) / 2;
+    
+    poseUpdate = [u_t(1) * cos(theta + halfRot) * deltaT;
+                  u_t(1) * sin(theta + halfRot) * deltaT;
                   u_t(2) * deltaT];
-    %}
-    poseUpdate = [-1 * (u_t(1) / u_t(2)) * minusSin;
-                  (u_t(1) / u_t(2)) * minusCos;
-                  u_t(2) * deltaT];
+    
     poseMeanBar = poseMean + poseUpdate;
     poseCovBar = G_t * poseCov * G_t' + V_t * M_t * V_t';
     
