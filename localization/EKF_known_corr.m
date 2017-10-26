@@ -1,12 +1,12 @@
 addpath ../common;
 
 deltaT = .02;
-alphas = [1 1 20 20 10 10]; % need to figure out how to set these
+alphas = [1 1 1 1 1 1]; % need to figure out how to set these
 
 % also don't know how to calculate the measurement noise std_dev
-sigma_range = 100;
-sigma_bearing = 100;
-sigma_id = 50;
+sigma_range = 150;
+sigma_bearing = 150;
+sigma_id = 100;
 
 Q_t = [sigma_range^2 0 0;
        0 sigma_bearing^2 0;
@@ -55,38 +55,27 @@ for i = start:size(Robots{robot_num}.G, 1)
     t = Robots{robot_num}.G(i, 1);
     % update movement vector
     u_t = [Robots{robot_num}.O(i, 2); Robots{robot_num}.O(i, 3)];
-    
-    if u_t(2) == 0
-        u_t(2) = angularCorrect;
-        angularCorrect = angularCorrect * -1;
-    end
-    
-    % calculate a bunch of commonly used terms
-    sin1 = sin(theta + (u_t(2) * deltaT));
-    cos1 = cos(theta + (u_t(2) * deltaT));
-    plusSin = (sin(theta) + sin1);
-    plusCos = (cos(theta) + cos1);
-    minusSin = (sin(theta) - sin1);
-    minusCos = (cos(theta) - cos1);
+
+    rot = deltaT * u_t(2);
+    halfRot = rot / 2;
+    trans = u_t(1) * deltaT;
     
     % calculate the movement Jacobian
-    G_t = [1 0 (u_t(1) / u_t(2)) * (-1 * minusCos);
-           0 1 (u_t(1) / u_t(2)) * (-1 * minusSin);
+    G_t = [1 0 trans * -sin(theta + halfRot);
+           0 1 trans * cos(theta + halfRot);
            0 0 1];
     % calculate motion covariance in control space
     M_t = [(alphas(1) * abs(u_t(1)) + alphas(2) * abs(u_t(2)))^2 0;
            0 (alphas(3) * abs(u_t(1)) + alphas(4) * abs(u_t(2)))^2];
     % calculate Jacobian to transform motion covariance to state space
-    V_t = [(-1*plusSin/u_t(2)) (((u_t(1)*minusSin)/(u_t(2)^2))+(u_t(1)*cos1*deltaT)/u_t(2));
-           (minusCos/u_t(2)) (((-1*u_t(1)*minusCos)/(u_t(2)^2))+(u_t(1)*sin1*deltaT)/u_t(2));
-           0 deltaT];
+    V_t = [cos(theta + halfRot) -0.5 * sin(theta + halfRot);
+           sin(theta + halfRot) 0.5 * cos(theta + halfRot);
+           0 1];
     
     % calculate pose update from odometry
-    halfRot = (u_t(2) * deltaT) / 2;
-    
-    poseUpdate = [u_t(1) * cos(theta + halfRot) * deltaT;
-                  u_t(1) * sin(theta + halfRot) * deltaT;
-                  u_t(2) * deltaT];
+    poseUpdate = [trans * cos(theta + halfRot);
+                  trans * sin(theta + halfRot);
+                  rot];
     
     poseMeanBar = poseMean + poseUpdate;
     poseCovBar = G_t * poseCov * G_t' + V_t * M_t * V_t';
@@ -161,7 +150,7 @@ for i = start:size(Robots{robot_num}.G, 1)
                     atan2(yAct, xAct) - Robots{robot_num}.G(i,4);
                     j];
             % update pose mean and covariance estimates
-            poseMeanBar = poseMeanBar + K * (zAct - zHat(:,k));
+            poseMeanBar = poseMeanBar + K * (z(:,k) - zHat(:,k));
             poseCovBar = (eye(3) - (K * H)) * poseCovBar;
         end
     end
