@@ -1,12 +1,12 @@
 addpath ../common;
 
 deltaT = .02;
-alphas = [1 1 1 1 1 1]; % need to figure out how to set these
+alphas = [.5 .5 1 1 .5 .5]; % need to figure out how to set these
 
 % also don't know how to calculate the measurement noise std_dev
-sigma_range = 150;
-sigma_bearing = 150;
-sigma_id = 100;
+sigma_range = 200;
+sigma_bearing = 200;
+sigma_id = 10;
 
 Q_t = [sigma_range^2 0 0;
        0 sigma_bearing^2 0;
