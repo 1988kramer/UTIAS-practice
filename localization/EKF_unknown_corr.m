@@ -1,19 +1,19 @@
 addpath ../common;
 
 deltaT = .02;
-alphas = [2 2 12 12 1 1]; % need to figure out how to set these
+alphas = [.5 .5 1 1 .5 .5]; % need to figure out how to set these
 
 % also don't know how to calculate the measurement noise std_dev
-sigma_range = 300;
-sigma_bearing = 300;
-sigma_id = 100;
+sigma_range = 200;
+sigma_bearing = 200;
+sigma_id = 10;
 
 Q_t = [sigma_range^2 0 0;
        0 sigma_bearing^2 0;
        0 0 sigma_id^2];
 
 measurement_prob = 0;
-n_robots = 2;
+n_robots = 1;
 robot_num = 1;
 [Barcodes, Landmark_Groundtruth, Robots] = loadMRCLAMdataSet(n_robots);
 [Robots, timesteps] = sampleMRCLAMdataSet(Robots, deltaT);
@@ -55,40 +55,28 @@ for i = start:size(Robots{robot_num}.G, 1)
     t = Robots{robot_num}.G(i, 1);
     % update movement vector
     u_t = [Robots{robot_num}.O(i, 2); Robots{robot_num}.O(i, 3)];
-    
-    if u_t(2) == 0
-        u_t(2) = angularCorrect;
-        angularCorrect = angularCorrect * -1;
-    end
-    
-    % calculate a bunch of commonly used terms
-    sin1 = sin(theta + (u_t(2) * deltaT));
-    cos1 = cos(theta + (u_t(2) * deltaT));
-    plusSin = (sin(theta) + sin1);
-    plusCos = (cos(theta) + cos1);
-    minusSin = (sin(theta) - sin1);
-    minusCos = (cos(theta) - cos1);
+
+    rot = deltaT * u_t(2);
+    halfRot = rot / 2;
+    trans = u_t(1) * deltaT;
     
     % calculate the movement Jacobian
-    G_t = [1 0 (u_t(1) / u_t(2)) * (-1 * minusCos);
-           0 1 (u_t(1) / u_t(2)) * (-1 * minusSin);
+    G_t = [1 0 trans * -sin(theta + halfRot);
+           0 1 trans * cos(theta + halfRot);
            0 0 1];
     % calculate motion covariance in control space
     M_t = [(alphas(1) * abs(u_t(1)) + alphas(2) * abs(u_t(2)))^2 0;
            0 (alphas(3) * abs(u_t(1)) + alphas(4) * abs(u_t(2)))^2];
     % calculate Jacobian to transform motion covariance to state space
-    V_t = [(-1*plusSin/u_t(2)) (((u_t(1)*minusSin)/(u_t(2)^2))+(u_t(1)*cos1*deltaT)/u_t(2));
-           (minusCos/u_t(2)) (((-1*u_t(1)*minusCos)/(u_t(2)^2))+(u_t(1)*sin1*deltaT)/u_t(2));
-           0 deltaT];
-    %{
+    V_t = [cos(theta + halfRot) -0.5 * sin(theta + halfRot);
+           sin(theta + halfRot) 0.5 * cos(theta + halfRot);
+           0 1];
+    
     % calculate pose update from odometry
-    poseUpdate = [u_t(1) * cos(theta) * deltaT;
-                  u_t(1) * sin(theta) * deltaT;
-                  u_t(2) * deltaT];
-    %}
-    poseUpdate = [-1 * (u_t(1) / u_t(2)) * minusSin;
-                  (u_t(1) / u_t(2)) * minusCos;
-                  u_t(2) * deltaT];
+    poseUpdate = [trans * cos(theta + halfRot);
+                  trans * sin(theta + halfRot);
+                  rot];
+    
     poseMeanBar = poseMean + poseUpdate;
     poseCovBar = G_t * poseCov * G_t' + V_t * M_t * V_t';
     
@@ -100,12 +88,13 @@ for i = start:size(Robots{robot_num}.G, 1)
     z = zeros(3,1);
     %
     while (Robots{robot_num}.M(measurementIndex, 1) - t < .005) && (measurementIndex < size(Robots{robot_num}.M,1))
+        barcode = Robots{robot_num}.M(measurementIndex,2);
+        landmarkID = 0;
         if (codeDict.isKey(barcode))
-            barcode = Robots{robot_num}.M(measurementIndex,2);
+            landmarkID = codeDict(barcode);
         else
             disp('key not found');
         end
-        landmarkID = codeDict(barcode);
         if landmarkID > 5 && landmarkID < 21
             range = Robots{robot_num}.M(measurementIndex, 3);
             bearing = Robots{robot_num}.M(measurementIndex, 4);
