@@ -15,6 +15,7 @@ Q_t = [sigma_range^2 0 0;
 measurement_prob = 0;
 n_robots = 1;
 robot_num = 1;
+n_landmarks = 15;
 [Barcodes, Landmark_Groundtruth, Robots] = loadMRCLAMdataSet(n_robots);
 [Robots, timesteps] = sampleMRCLAMdataSet(Robots, deltaT);
 
@@ -98,60 +99,70 @@ for i = start:size(Robots{robot_num}.G, 1)
         if landmarkID > 5 && landmarkID < 21
             range = Robots{robot_num}.M(measurementIndex, 3);
             bearing = Robots{robot_num}.M(measurementIndex, 4);
-            id = landmarkID;
             if uint8(z(3)) == 0
                 z = [range;
                      bearing;
-                     id];
+                     0];
             else
                 newZ = [range;
                         bearing;
-                        id];
+                        0];
                 z = [z newZ];
             end
         end
         measurementIndex = measurementIndex + 1;
     end
-    S = zeros(size(z,2),3,3);
-    zHat = zeros(3, size(z,2));
     
     % if features are observed
     % loop over all features and compute Kalman gain
-    if z(3,1) > 1
+    if z(1,1) > 0.1
         for k = 1:size(z, 2) % loop over every observed landmark
-            j = z(3,k);
-
-            % get coordinates of observed landmark
-            m = Landmark_Groundtruth(j - 5, 2:3);
-
-            % compute predicted range and bearing
-            xDist = m(1) - poseMeanBar(1);
-            yDist = m(2) - poseMeanBar(2);
-            q = xDist^2 + yDist^2;
             
-            pred_bear = conBear(atan2(yDist, xDist) - poseMeanBar(3));
+            % loop over all landmarks and compute MLE correspondence
+            predZ = zeros(n_landmarks, 1, 3);
+            predS = zeros(n_landmarks, 3, 3);
+            predH = zeros(n_landmarks, 3, 3);
+            maxJ = 0;
+            landmarkIndex = 0;
+            for j = 1:n_landmarks
+                xDist = Landmark_Groundtruth(j, 2) - poseMeanBar(1);
+                yDist = Landmark_Groundtruth(j, 3) - poseMeanBar(2);
+                q = xDist^2 + yDist^2;
+                predZ(j,:,:) = [sqrt(q);
+                            conBear(atan2(yDist, xDist) - poseMeanBar(3));
+                            0];
+                predH(j,:,:) = [-xDist/sqrt(q) -yDist/sqrt(q) 0;
+                                yDist/q        -xDist/q      -1;
+                                0              0              0];
+                predS(j,:,:) = predH(j) * poseCovBar * predH(j)' + Q_t;
+                thisJ = det(2 * pi * squeeze(predS(j,:,:)))^(-0.5) * ...
+                        exp(-0.5 * (z(:,k) - squeeze(predZ(j,:,:)))' ...
+                        * inv(squeeze(predS(j,:,:))) ...
+                        * (z(:,k) - squeeze(predZ(j,:,:))));
+                if thisJ > maxJ
+                    maxJ = thisJ;
+                    landmarkIndex = j;
+                elseif thisJ < 0
+                    disp("j less than 0");
+                    disp(thisJ);
+                elseif thisJ == 0
+                    disp("j equals 0");
+                end
+            end
             
-            zHat(:,k) = [sqrt(q);
-                         pred_bear;
-                         j];
-
-            % calculate Jacobian of h (line 13)
-            H = [(-1 * (xDist / sqrt(q))) (-1 * (yDist / sqrt(q))) 0;
-                 (yDist / q) (-1 * (xDist / q)) -1;
-                 0 0 0];
-            S(k,:,:) = H * poseCovBar * H' + Q_t;
-
             % compute Kalman gain
-            K = poseCov * H' * inv(squeeze(S(k,:,:)));
-            %K = squeeze(S(k,:,:)) \ (poseCovBar * H'); % may be equivalent to above
+            K = poseCovBar * squeeze(predH(landmarkIndex,:,:))' ...
+                * inv(squeeze(predS(landmarkIndex,:,:)));
+            %{
             xAct = m(1)-Robots{robot_num}.G(i,2);
             yAct = m(2)-Robots{robot_num}.G(i,3);
             zAct = [sqrt(xAct^2 + yAct^2);
                     atan2(yAct, xAct) - Robots{robot_num}.G(i,4);
                     j];
+            %}
             % update pose mean and covariance estimates
-            poseMeanBar = poseMeanBar + K * (z(:,k) - zHat(:,k));
-            poseCovBar = (eye(3) - (K * H)) * poseCovBar;
+            poseMeanBar = poseMeanBar + K * (z(:,k) - predZ(landmarkIndex,:));
+            poseCovBar = (eye(3) - (K * squeeze(predH(landmarkIndex,:,:)))) * poseCovBar;
         end
     end
     %
