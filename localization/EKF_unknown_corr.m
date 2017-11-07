@@ -4,9 +4,9 @@ deltaT = .02;
 alphas = [.5 .5 1 1 .5 .5]; % need to figure out how to set these
 
 % also don't know how to calculate the measurement noise std_dev
-sigma_range = 200;
-sigma_bearing = 200;
-sigma_id = 10;
+sigma_range = 300;
+sigma_bearing = 300;
+sigma_id = 150;
 
 Q_t = [sigma_range^2 0 0;
        0 sigma_bearing^2 0;
@@ -139,6 +139,9 @@ for i = start:size(Robots{robot_num}.G, 1)
                         exp(-0.5 * (z(:,k) - squeeze(predZ(j,:,:)))' ...
                         * inv(squeeze(predS(j,:,:))) ...
                         * (z(:,k) - squeeze(predZ(j,:,:))));
+                if imag(thisJ) ~= 0
+                    thisJ = 0;
+                end
                 if thisJ > maxJ
                     maxJ = thisJ;
                     landmarkIndex = j;
@@ -161,7 +164,7 @@ for i = start:size(Robots{robot_num}.G, 1)
                     j];
             %}
             % update pose mean and covariance estimates
-            poseMeanBar = poseMeanBar + K * (z(:,k) - predZ(landmarkIndex,:));
+            poseMeanBar = poseMeanBar + K * (z(:,k) - squeeze(predZ(landmarkIndex,:,:)));
             poseCovBar = (eye(3) - (K * squeeze(predH(landmarkIndex,:,:)))) * poseCovBar;
         end
     end
