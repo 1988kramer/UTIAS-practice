@@ -169,7 +169,7 @@ for i = start:size(Robots{robot_num}.G, 1)
             % if landmark persistence probability is above threshold
             % update pose mean and covariance with measurement
             % else ignore the measurement
-            % NOTE persistence probabilities should be updated before this
+            % NOTE persistence probabilities should b
             if (persist(landmarkIndex,1)) > pV
                 % compute Kalman gain
                 K = poseCovBar * squeeze(predH(landmarkIndex,:,:))' ...
