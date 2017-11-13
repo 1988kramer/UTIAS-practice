@@ -1,17 +1,18 @@
 addpath ../common;
 
 deltaT = .02;
-alphas = [.5 .5 1 1 .5 .5]; % need to figure out how to set these
+alphas = [.2 .03 .09 .08 0 0]; % need to figure out how to set these
 
 % also don't know how to calculate the measurement noise std_dev
-sigma_range = 300;
-sigma_bearing = 300;
-sigma_id = 150;
+sigma_range = .43;
+sigma_bearing = .6;
+sigma_id = 1;
 
 Q_t = [sigma_range^2 0 0;
        0 sigma_bearing^2 0;
        0 0 sigma_id^2];
 
+missed = 0;
 measurement_prob = 0;
 n_robots = 1;
 robot_num = 1;
@@ -23,7 +24,7 @@ n_landmarks = 15;
 Robots{robot_num}.Est = zeros(size(Robots{robot_num}.G,1), 4);
 
 % initialize time, and pose estimate
-start = 600; %15000;
+start = 1; %15000;
 t = Robots{robot_num}.G(start, 1);
 % need mean and covariance for the initial pose estimate
 poseMean = [Robots{robot_num}.G(start,2);
@@ -33,7 +34,7 @@ poseCov = [0.01 0.01 0.01;
            0.01 0.01 0.01;
            0.01 0.01 0.01];
        
-measurementIndex = 2;
+measurementIndex = 1;
 angularCorrect = .01;
 
 % set up map between barcodes and landmark IDs
@@ -87,10 +88,9 @@ for i = start:size(Robots{robot_num}.G, 1)
     
     % build vector of features observed at current time
     z = zeros(3,1);
-    %
+    landmarkID = 0;
     while (Robots{robot_num}.M(measurementIndex, 1) - t < .005) && (measurementIndex < size(Robots{robot_num}.M,1))
         barcode = Robots{robot_num}.M(measurementIndex,2);
-        landmarkID = 0;
         if (codeDict.isKey(barcode))
             landmarkID = codeDict(barcode);
         else
@@ -102,11 +102,11 @@ for i = start:size(Robots{robot_num}.G, 1)
             if uint8(z(3)) == 0
                 z = [range;
                      bearing;
-                     0];
+                     landmarkID];
             else
                 newZ = [range;
                         bearing;
-                        0];
+                        landmarkID];
                 z = [z newZ];
             end
         end
@@ -134,7 +134,8 @@ for i = start:size(Robots{robot_num}.G, 1)
                 predH(j,:,:) = [-xDist/sqrt(q) -yDist/sqrt(q) 0;
                                 yDist/q        -xDist/q      -1;
                                 0              0              0];
-                predS(j,:,:) = predH(j) * poseCovBar * predH(j)' + Q_t;
+                predS(j,:,:) = squeeze(predH(j,:,:)) * poseCovBar ...
+                               * squeeze(predH(j,:,:))' + Q_t;
                 thisJ = det(2 * pi * squeeze(predS(j,:,:)))^(-0.5) * ...
                         exp(-0.5 * (z(:,k) - squeeze(predZ(j,:,:)))' ...
                         * inv(squeeze(predS(j,:,:))) ...
@@ -153,6 +154,10 @@ for i = start:size(Robots{robot_num}.G, 1)
                 end
             end
             
+            % increase count of missed landmarks if needed
+            if z(3,k) ~= landmarkIndex + 5
+                missed = missed + 1;
+            end
             % compute Kalman gain
             K = poseCovBar * squeeze(predH(landmarkIndex,:,:))' ...
                 * inv(squeeze(predS(landmarkIndex,:,:)));
