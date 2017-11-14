@@ -18,15 +18,16 @@ function [probs] = persistence_filter(pM, pF, lambda, marks_in_FOV, ...
             % if landmark has been encountered before
             if probs(i,6) > 0
                 % compute next prior for given landmark
+                % NOTE need to switch this to ln(prior)
                 nextPrior = -exp(-lambda * (t - probs(i,6))) + 1;
                 % compute ln(partial) evidence
-                probs(i,2) = ln((pF^yT) * (1 - pF)^(1-yT)) ...
+                probs(i,2) = log((pF^yT) * (1 - pF)^(1-yT)) ...
                              + probs(i,2) ...
-                             + ln(1 + exp(probs(i,3) + ln(nextPrior - probs(i,5)) - probs(i,2)));
+                             + log(1 + exp(probs(i,3) + log(nextPrior - probs(i,5)) - probs(i,2)));
                 % compute ln(likelihood)
-                probs(i,3) = ln((pM^(1 - yT)) * ((1 - pM)^yT)) + probs(i,3);
+                probs(i,3) = log((pM^(1 - yT)) * ((1 - pM)^yT)) + probs(i,3);
                 % compute ln(evidence)
-                probs(i,4) = probs(i,2) + ln(1 + exp(probs(i,3) - (lambda * t) - probs(i,2)));
+                probs(i,4) = probs(i,2) + log(1 + exp(probs(i,3) - (lambda * t) - probs(i,2)));
                 % update prior
                 probs(i,5) = nextPrior;
                 % compute ln(posterior)
@@ -44,6 +45,4 @@ function [probs] = persistence_filter(pM, pF, lambda, marks_in_FOV, ...
             end
         end
     end
-    
-    prior = nextPrior;
 end
