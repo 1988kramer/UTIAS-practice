@@ -1,9 +1,9 @@
 addpath ../common;
 
 deltaT = .02;
-alphas = [.2 .03 .09 .08 0 0]; % need to figure out how to set these
+alphas = [.2 .03 .09 .08 0 0]; % motion model noise parameters
 
-% also don't know how to calculate the measurement noise std_dev
+% measurement model noise parameters
 sigma_range = .43;
 sigma_bearing = .6;
 sigma_id = 1;
@@ -23,9 +23,8 @@ n_landmarks = 15;
 % add pose estimate matrix to Robots
 Robots{robot_num}.Est = zeros(size(Robots{robot_num}.G,1), 4);
 
-% initialize time, and pose estimate
-start = 1; %15000;
-t = Robots{robot_num}.G(start, 1);
+start = 1; 
+t = Robots{robot_num}.G(start, 1); 
 % need mean and covariance for the initial pose estimate
 poseMean = [Robots{robot_num}.G(start,2);
             Robots{robot_num}.G(start,3);
@@ -35,22 +34,17 @@ poseCov = [0.01 0.01 0.01;
            0.01 0.01 0.01];
        
 measurementIndex = 1;
-angularCorrect = .01;
 
 % set up map between barcodes and landmark IDs
 codeDict = containers.Map(Barcodes(:,2),Barcodes(:,1));
-%{
-for i = 1:size(Barcodes,1)
-    codeDict(Barcodes(i,2)) = Barcodes(i,1);
-end
-%}
+
 while (Robots{robot_num}.M(measurementIndex, 1) < t - .05)
         measurementIndex = measurementIndex + 1;
 end
 
 % loop through all odometry and measurement samples
 % updating the robot's pose estimate with each step
-% reference table 7.2 in Probabilistic Robotics
+% reference table 7.3 in Probabilistic Robotics
 for i = start:size(Robots{robot_num}.G, 1)
     theta = poseMean(3, 1);
     % update time

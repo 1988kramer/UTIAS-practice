@@ -1,9 +1,9 @@
 addpath ../common;
 
 deltaT = .02;
-alphas = [.2 .03 .09 .08 0 0]; % need to figure out how to set these
+alphas = [.2 .03 .09 .08 0 0]; % motion model noise parameters
 
-% also don't know how to calculate the measurement noise std_dev
+% measurement model noise parameters
 sigma_range = .43;
 sigma_bearing = .6;
 sigma_id = 1;
@@ -16,8 +16,9 @@ pM = 0.2;      % probability of missed measurement
 pF = 0.2;      % probability of false positive measurement
 lambda = 1e-5; % prior survival function = exp(-lambda * t)
                % uses uniform prior probability
-pV = 1e-10;     % threshold probability for landmark persistence
+pV = 1e-10;    % threshold probability for landmark persistence
 
+missed = 0;    % number of incorrect landmark associations
 n_robots = 1;
 robot_num = 1;
 n_landmarks = 15;
@@ -28,20 +29,18 @@ n_landmarks = 15;
 % persist(:,2) = partial evidence
 % persist(:,3) = likelihood
 % persist(:,4) = evidence
-% persist(:,5) = persistence prior for landmark
+% persist(:,5) = persistence prior
 % persist(:,6) = time landmark was first observed
 persist = zeros(n_landmarks,6); % may need to change how this is initialized
 persist(:,3) = 1;
 persist(:,4) = 1;
 
-persist_prior = 0;
-
 % add pose estimate matrix to Robots
 Robots{robot_num}.Est = zeros(size(Robots{robot_num}.G,1), 4);
 
-% initialize time, and pose estimate
 start = 1;
 t = Robots{robot_num}.G(start, 1);
+
 % need mean and covariance for the initial pose estimate
 poseMean = [Robots{robot_num}.G(start,2);
             Robots{robot_num}.G(start,3);
@@ -51,22 +50,17 @@ poseCov = [0.01 0.01 0.01;
            0.01 0.01 0.01];
        
 measurementIndex = 1;
-angularCorrect = .01;
 
 % set up map between barcodes and landmark IDs
 codeDict = containers.Map(Barcodes(:,2),Barcodes(:,1));
-%{
-for i = 1:size(Barcodes,1)
-    codeDict(Barcodes(i,2)) = Barcodes(i,1);
-end
-%}
+
 while (Robots{robot_num}.M(measurementIndex, 1) < t - .05)
         measurementIndex = measurementIndex + 1;
 end
 
 % loop through all odometry and measurement samples
 % updating the robot's pose estimate with each step
-% reference table 7.2 in Probabilistic Robotics
+% reference table 7.3 in Probabilistic Robotics
 for i = start:size(Robots{robot_num}.G, 1)
     theta = poseMean(3, 1);
     % update time
@@ -104,7 +98,7 @@ for i = start:size(Robots{robot_num}.G, 1)
     
     % build vector of features observed at current time
     z = zeros(3,1);
-    %
+    landmarkIDs = 0;
     while (Robots{robot_num}.M(measurementIndex, 1) - t < .005) && (measurementIndex < size(Robots{robot_num}.M,1))
         barcode = Robots{robot_num}.M(measurementIndex,2);
         landmarkID = 0;
@@ -120,11 +114,14 @@ for i = start:size(Robots{robot_num}.G, 1)
                 z = [range;
                      bearing;
                      0];
+                landmarkIDs = landmarkID;
             else
                 newZ = [range;
                         bearing;
                         0];
                 z = [z newZ];
+                newID = landmarkID;
+                landmarkIDs = [landmarkIDs newID];
             end
         end
         measurementIndex = measurementIndex + 1;
@@ -175,6 +172,13 @@ for i = start:size(Robots{robot_num}.G, 1)
                 end
             end
             z(3,k) = landmarkIndex;
+            
+            % increment missed count if measurement is associated
+            % to the wrong landmark
+            if landmarkIDs(k) ~= landmarkIndex + 5
+                missed = missed + 1;
+            end
+            
             % if landmark persistence probability is above threshold
             % update pose mean and covariance with measurement
             % else ignore the measurement
@@ -188,8 +192,8 @@ for i = start:size(Robots{robot_num}.G, 1)
             poseCovBar = (eye(3) - (K * squeeze(predH(landmarkIndex,:,:)))) * poseCovBar;
         end
         % update landmark persistence probabilities
-        [persist, persist_prior] = persistence_filter(pM, pF, lambda, ...
-                                    persist_prior, persist, z, t, pV);
+        [persist] = persistence_filter(pM, pF, lambda, ...
+                                         persist, z, t, pV);
     end
     
     % update pose mean and covariance
