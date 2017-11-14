@@ -12,8 +12,8 @@ Q_t = [sigma_range^2 0 0;
        0 sigma_bearing^2 0;
        0 0 sigma_id^2];
    
-pM = 0.2;      % probability of missed measurement
-pF = 0.2;      % probability of false positive measurement
+pM = 0.3;      % probability of missed measurement
+pF = 0.1;      % probability of false positive measurement
 lambda = 1e-5; % prior survival function = exp(-lambda * t)
                % uses uniform prior probability
 pV = 1e-10;    % threshold probability for landmark persistence
@@ -92,6 +92,7 @@ for i = start:size(Robots{robot_num}.G, 1)
     poseMeanBar = poseMean + poseUpdate;
     poseCovBar = G_t * poseCov * G_t' + V_t * M_t * V_t';
     
+    % stopping point for debugging
     if (mod(uint32(t*100), 100) == 0)
         1;
     end
@@ -130,10 +131,10 @@ for i = start:size(Robots{robot_num}.G, 1)
     % if features are observed
     % loop over all features and compute Kalman gain
     if z(1,1) > 0.1
+        predZ = zeros(3, n_landmarks);
         for k = 1:size(z, 2) % loop over every observed landmark
             
             % loop over all landmarks and compute MLE correspondence
-            predZ = zeros(n_landmarks, 1, 3);
             predS = zeros(n_landmarks, 3, 3);
             predH = zeros(n_landmarks, 3, 3);
             maxJ = 0;
@@ -142,7 +143,7 @@ for i = start:size(Robots{robot_num}.G, 1)
                 xDist = Landmark_Groundtruth(j, 2) - poseMeanBar(1);
                 yDist = Landmark_Groundtruth(j, 3) - poseMeanBar(2);
                 q = xDist^2 + yDist^2;
-                predZ(j,:,:) = [sqrt(q);
+                predZ(:,j) = [sqrt(q);
                             conBear(atan2(yDist, xDist) - poseMeanBar(3));
                             0];
                 predH(j,:,:) = [-xDist/sqrt(q) -yDist/sqrt(q) 0;
@@ -151,13 +152,10 @@ for i = start:size(Robots{robot_num}.G, 1)
                 predS(j,:,:) = squeeze(predH(j,:,:)) * poseCovBar * ...
                                squeeze(predH(j,:,:))' + Q_t;
                 thisJ = det(2 * pi * squeeze(predS(j,:,:)))^(-0.5) * ...
-                        exp(-0.5 * (z(:,k) - squeeze(predZ(j,:,:)))' ...
+                        exp(-0.5 * (z(:,k) - predZ(:,j))' ...
                         * inv(squeeze(predS(j,:,:))) ...
-                        * (z(:,k) - squeeze(predZ(j,:,:))));
-                % weight measurement prob with persistence prob
-                if persist(j,1) > 0
-                    thisJ = thisJ * persist(j,1);
-                end
+                        * (z(:,k) - predZ(:,j)));
+
                 if imag(thisJ) ~= 0
                     thisJ = 0;
                 end
@@ -188,11 +186,12 @@ for i = start:size(Robots{robot_num}.G, 1)
                 * inv(squeeze(predS(landmarkIndex,:,:)));
 
             % update pose mean and covariance estimates
-            poseMeanBar = poseMeanBar + K * (z(:,k) - squeeze(predZ(landmarkIndex,:,:)));
+            poseMeanBar = poseMeanBar + K * (z(:,k) - predZ(:,landmarkIndex));
             poseCovBar = (eye(3) - (K * squeeze(predH(landmarkIndex,:,:)))) * poseCovBar;
         end
         % update landmark persistence probabilities
-        [persist] = persistence_filter(pM, pF, lambda, ...
+        marks_in_FOV = in_FOV(predZ, 0.3, 7);
+        [persist] = persistence_filter(pM, pF, lambda, marks_in_FOV, ...
                                          persist, z, t, pV);
     end
     
@@ -225,4 +224,4 @@ for i = start:size(Robots{robot_num}.G, 1)
    
 end
 
-animateMRCLAMdataSet(Robots, Landmark_Groundtruth, timesteps, deltaT);
+%animateMRCLAMdataSet(Robots, Landmark_Groundtruth, timesteps, deltaT);
