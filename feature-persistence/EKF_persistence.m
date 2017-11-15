@@ -194,7 +194,11 @@ for i = start:size(Robots{robot_num}.G, 1)
             poseCovBar = (eye(3) - (K * squeeze(predH(landmarkIndex,:,:)))) * poseCovBar;
         end
         % update landmark persistence probabilities
+<<<<<<< HEAD
         marks_in_FOV = in_FOV(predZ, 0.3, 1, 4);
+=======
+        marks_in_FOV = in_FOV(predZ, 0.2, 3);
+>>>>>>> 3a0ff1ec3f32021a182f69cf7f3787e1f4e8e985
         [persist] = persistence_filter(pM, pF, lambda, marks_in_FOV, ...
                                          persist, z, t, pV);
     end
