@@ -12,13 +12,17 @@ Q_t = [sigma_range^2 0 0;
        0 sigma_bearing^2 0;
        0 0 sigma_id^2];
    
-pM = 0.3;      % probability of missed measurement
-pF = 0.1;      % probability of false positive measurement
+pM = 0.6;      % probability of missed measurement
+pF = 0.2;      % probability of false positive measurement
 lambda = 1e-5; % prior survival function = exp(-lambda * t)
                % uses uniform prior probability
 pV = 1e-10;    % threshold probability for landmark persistence
 
-missed = 0;    % number of incorrect landmark associations
+n_incorrect = 0;       % number of incorrect landmark associations
+misses = zeros(3,1);   % predicted measurements for which a landmark was 
+                       % not detected when it is in the sensor's FOV
+expected = zeros(3,1); % predicted measurements which were in 
+                       % the sensor's FOV
 n_robots = 1;
 robot_num = 1;
 n_landmarks = 15;
@@ -174,7 +178,7 @@ for i = start:size(Robots{robot_num}.G, 1)
             % increment missed count if measurement is associated
             % to the wrong landmark
             if landmarkIDs(k) ~= landmarkIndex + 5
-                missed = missed + 1;
+                n_incorrect = n_incorrect + 1;
             end
             
             % if landmark persistence probability is above threshold
@@ -190,7 +194,7 @@ for i = start:size(Robots{robot_num}.G, 1)
             poseCovBar = (eye(3) - (K * squeeze(predH(landmarkIndex,:,:)))) * poseCovBar;
         end
         % update landmark persistence probabilities
-        marks_in_FOV = in_FOV(predZ, 0.3, 7);
+        marks_in_FOV = in_FOV(predZ, 0.3, 1, 4);
         [persist] = persistence_filter(pM, pF, lambda, marks_in_FOV, ...
                                          persist, z, t, pV);
     end
