@@ -1,9 +1,8 @@
-function [probs] = persistence_filter(pM, pF, lambda, marks_in_FOV, ...
-                                             probs, z, t, pV) 
+function [probs, misses] = persistence_filter(pM, pF, lambda, marks_in_FOV, ...
+                                             probs, z, t, pV, misses) 
     
     % loop over all landmark probabilities
     % update probabilities based on measurements and time elapsed
-    % assumes correspondence IS KNOWN
     for i = 1:size(probs,1)
         if marks_in_FOV(i) == 1 || ismember(i, z(3,:))
             yT = 0;
@@ -15,6 +14,10 @@ function [probs] = persistence_filter(pM, pF, lambda, marks_in_FOV, ...
                     probs(i,5) = 0;
                     probs(i,6) = t;
                 end
+            end
+            
+            if yT == 0
+                misses(i) = misses(i) + 1;
             end
 
             % if landmark has been encountered before

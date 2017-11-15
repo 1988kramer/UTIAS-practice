@@ -12,20 +12,20 @@ Q_t = [sigma_range^2 0 0;
        0 sigma_bearing^2 0;
        0 0 sigma_id^2];
    
-pM = 0.6;      % probability of missed measurement
-pF = 0.2;      % probability of false positive measurement
-lambda = 1e-5; % prior survival function = exp(-lambda * t)
-               % uses uniform prior probability
-pV = 1e-10;    % threshold probability for landmark persistence
-
-n_incorrect = 0;       % number of incorrect landmark associations
-misses = zeros(3,1);   % predicted measurements for which a landmark was 
-                       % not detected when it is in the sensor's FOV
-expected = zeros(3,1); % predicted measurements which were in 
-                       % the sensor's FOV
 n_robots = 1;
 robot_num = 1;
 n_landmarks = 15;
+   
+pM = 0.6;      % probability of missed measurement
+pF = 0.3;      % probability of false positive measurement
+lambda = 1e-2; % prior survival function = exp(-lambda * t)
+pV = 1e-10;    % threshold probability for landmark persistence
+
+n_incorrect = 0;       % number of incorrect landmark associations
+misses = zeros(n_landmarks, 1);   % predicted measurements for which a landmark was 
+                       % not detected when it is in the sensor's FOV
+expected = zeros(3,1); % predicted measurements which were in 
+                       % the sensor's FOV
 [Barcodes, Landmark_Groundtruth, Robots] = loadMRCLAMdataSet(n_robots);
 [Robots, timesteps] = sampleMRCLAMdataSet(Robots, deltaT);
 
@@ -44,6 +44,7 @@ Robots{robot_num}.Est = zeros(size(Robots{robot_num}.G,1), 4);
 
 start = 1;
 t = Robots{robot_num}.G(start, 1);
+tmax = max(Robots{robot_num}.G(:,1));
 
 % need mean and covariance for the initial pose estimate
 poseMean = [Robots{robot_num}.G(start,2);
@@ -57,6 +58,9 @@ measurementIndex = 1;
 
 % set up map between barcodes and landmark IDs
 codeDict = containers.Map(Barcodes(:,2),Barcodes(:,1));
+
+% randomly decide times when several landmarks will disappear
+times_of_death = kill_landmarks(n_landmarks, 2, t, 30, deltaT);
 
 while (Robots{robot_num}.M(measurementIndex, 1) < t - .05)
         measurementIndex = measurementIndex + 1;
@@ -112,21 +116,30 @@ for i = start:size(Robots{robot_num}.G, 1)
         else
             disp('key not found');
         end
+        % check if landmark is valid
         if landmarkID > 5 && landmarkID < 21
-            range = Robots{robot_num}.M(measurementIndex, 3);
-            bearing = Robots{robot_num}.M(measurementIndex, 4);
-            if uint8(z(3)) == 0
-                z = [range;
-                     bearing;
-                     0];
-                landmarkIDs = landmarkID;
+            TOD = times_of_death(landmarkID - 5);
+            % check if landmark has died
+            if (TOD == 0 || TOD > t)
+                range = Robots{robot_num}.M(measurementIndex, 3);
+                bearing = Robots{robot_num}.M(measurementIndex, 4);
+                if z(3,1) == 0
+                    z = [range;
+                         bearing;
+                         0];
+                    landmarkIDs = landmarkID;
+                else
+                    newZ = [range;
+                            bearing;
+                            0];
+                    z = [z newZ];
+                    newID = landmarkID;
+                    landmarkIDs = [landmarkIDs newID];
+                end
+            %{
             else
-                newZ = [range;
-                        bearing;
-                        0];
-                z = [z newZ];
-                newID = landmarkID;
-                landmarkIDs = [landmarkIDs newID];
+                misses(landmarkID - 5) = misses(landmarkID - 5) + 1;
+            %}
             end
         end
         measurementIndex = measurementIndex + 1;
@@ -163,7 +176,7 @@ for i = start:size(Robots{robot_num}.G, 1)
                 if imag(thisJ) ~= 0
                     thisJ = 0;
                 end
-                if thisJ > maxJ
+                if thisJ > maxJ && persist(j,6) >= 0
                     maxJ = thisJ;
                     landmarkIndex = j;
                 elseif thisJ < 0
@@ -194,13 +207,9 @@ for i = start:size(Robots{robot_num}.G, 1)
             poseCovBar = (eye(3) - (K * squeeze(predH(landmarkIndex,:,:)))) * poseCovBar;
         end
         % update landmark persistence probabilities
-<<<<<<< HEAD
         marks_in_FOV = in_FOV(predZ, 0.3, 1, 4);
-=======
-        marks_in_FOV = in_FOV(predZ, 0.2, 3);
->>>>>>> 3a0ff1ec3f32021a182f69cf7f3787e1f4e8e985
-        [persist] = persistence_filter(pM, pF, lambda, marks_in_FOV, ...
-                                         persist, z, t, pV);
+        [persist, misses] = persistence_filter(pM, pF, lambda, marks_in_FOV, ...
+                                         persist, z, t, pV, misses);
     end
     
     % update pose mean and covariance
