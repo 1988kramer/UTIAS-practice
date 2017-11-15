@@ -12,8 +12,8 @@ Q_t = [sigma_range^2 0 0;
        0 sigma_bearing^2 0;
        0 0 sigma_id^2];
    
-pM = 0.3;      % probability of missed measurement
-pF = 0.1;      % probability of false positive measurement
+pM = 0.5;      % probability of missed measurement
+pF = 0.2;      % probability of false positive measurement
 lambda = 1e-5; % prior survival function = exp(-lambda * t)
                % uses uniform prior probability
 pV = 1e-10;    % threshold probability for landmark persistence
@@ -190,7 +190,7 @@ for i = start:size(Robots{robot_num}.G, 1)
             poseCovBar = (eye(3) - (K * squeeze(predH(landmarkIndex,:,:)))) * poseCovBar;
         end
         % update landmark persistence probabilities
-        marks_in_FOV = in_FOV(predZ, 0.3, 7);
+        marks_in_FOV = in_FOV(predZ, 0.2, 3);
         [persist] = persistence_filter(pM, pF, lambda, marks_in_FOV, ...
                                          persist, z, t, pV);
     end
