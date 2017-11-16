@@ -1,11 +1,11 @@
 addpath ../common;
 
 deltaT = .02;
-alphas = [.2 .03 .09 .08 0 0]; % motion model noise parameters
+alphas = [.1 .01 .18 .08 0 0]; % motion model noise parameters
 
 % measurement model noise parameters
-Q_t = [0.43 0    0;
-       0    0.6  0;
+Q_t = [11.8 0    0;
+       0    .18  0;
        0    0    1];
    
 n_robots = 1;
@@ -17,24 +17,33 @@ n_landmarks = 15;
 % add pose estimate matrix to Robots
 Robots{robot_num}.Est = zeros(size(Robots{robot_num}.G,1), 4);
 
-start = 1;
+start = 600;
 t = Robots{robot_num}.G(start, 1);
 
 % initialize state mean
 stateMean = [Robots{robot_num}.G(start,2);
             Robots{robot_num}.G(start,3);
             Robots{robot_num}.G(start,4)];
-F_x = zeros(3, 3 * n_landmarks + 3);
-for i = 1:3
-    F_x(i,i) = 1;
-end
+        
+% reshapes stateMean to 1 x 3*n_landmarks+3
+F_x = [eye(3) zeros(3, 3 * n_landmarks)];
+
 stateMean = F_x' * stateMean;
 
-% initialize state covariance  
+% initialize pose covariance with small, nonzero values  
 stateCov = zeros(3 * n_landmarks + 3, 3 * n_landmarks + 3);
+stateCov(1:3,1:3) = 0.001;
 
-stateCov(4:size(stateCov,1),:) = 1e5;
-stateCov(:,4:size(stateCov,2)) = 1e5;
+% initialize landmark covariance with known uncertainties
+% on landmark positions
+for i = 1:n_landmarks * 3 + 3
+    %{
+    stateCov(i * 3 + 1, i * 3 + 1) = Landmark_Groundtruth(i, 4);
+    stateCov(i * 3 + 2, i * 3 + 2) = Landmark_Groundtruth(i, 5);
+    %}
+    stateCov(i,i) = 0.65;
+end
+
     
 measurementIndex = 1;
 
@@ -86,6 +95,7 @@ for i = start:size(Robots{robot_num}.G, 1)
     R_t = V_t * M_t * V_t';
     stateCovBar = (G_t * stateCov * G_t') + (F_x' * R_t * F_x);
     
+    
     % build vector of features observed at current time
     z = zeros(3,1);
     while (Robots{robot_num}.M(measurementIndex, 1) - t < .005) && (measurementIndex < size(Robots{robot_num}.M,1))
@@ -127,16 +137,16 @@ for i = start:size(Robots{robot_num}.G, 1)
             % add it to the state vector
             if stateMeanBar(3 + j) == 0
                 landmark_pos = [z(1,k) * cos(z(2,k) + stateMeanBar(3));
-                                z(2,k) * sin(z(2,k) + stateMeanBar(3));
+                                z(1,k) * sin(z(2,k) + stateMeanBar(3));
                                 0];
                 stateMeanBar(3*j+1:3*j+3) = [stateMeanBar(1) + landmark_pos(1);
                                              stateMeanBar(2) + landmark_pos(2);
-                                             j];
+                                             0];
             end
 
             % compute predicted range and bearing
-            delta = [stateMeanBar(3*j) - stateMeanBar(1);
-                     stateMeanBar(3*j+1) - stateMeanBar(2)];
+            delta = [stateMeanBar(3*j+1) - stateMeanBar(1);
+                     stateMeanBar(3*j+2) - stateMeanBar(2)];
             q = delta' * delta;
             r = sqrt(q); % predicted range to landmark
             
@@ -174,4 +184,16 @@ for i = start:size(Robots{robot_num}.G, 1)
     Robots{robot_num}.Est(i,:) = [t stateMean(1) stateMean(2) stateMean(3)];
 end
 
+% calculate land_loss: sum of squares of error in final landmark position
+land_loss = 0;
+for i = 1:n_landmarks
+    x_diff = stateMean(3 * i + 1) - Landmark_Groundtruth(i, 2);
+    y_diff = stateMean(3 * i + 2) - Landmark_Groundtruth(i, 3);
+    sq_err = x_diff^2 + y_diff^2;
+    land_loss = land_loss + sq_err;
+end
+%disp(land_loss);
+
+p_loss = path_loss(Robots, robot_num, start);
+disp(p_loss);
 animateMRCLAMdataSet(Robots, Landmark_Groundtruth, timesteps, deltaT);
