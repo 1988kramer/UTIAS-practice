@@ -41,6 +41,9 @@ for i = start:size(Robots{robot_num}.G, 1)
     % update time
     t = Robots{robot_num}.G(i, 1);
     
+    % update number of landmarks
+    n_landmarks = size(stateMean, 1) - 3;
+    
     % update movement vector
     u_t = [Robots{robot_num}.O(i, 2); Robots{robot_num}.O(i, 3)];
     % update robot bearing
@@ -78,5 +81,48 @@ for i = start:size(Robots{robot_num}.G, 1)
     R_t = V_t * M_t * V_t';
     stateCovBar = (G_t * stateCov * G_t') + (F_x' * R_t * F_x);
     
+    % get measurements
+    [z, measurementIndex] = getObservations(Robots, robot_num, t, measurementIndex, codeDict);
     
+    % if features are observed
+    % loop over all features and compute Kalman gain
+    if z(3,1) > 1
+        for k = 1:size(z, 2) % loop over every observed landmark
+
+            predZ   = zeros(n_landmarks+1, 1, 3);
+            predPsi = zeros(n_landmarks+1, 3, 3);
+            predH   = zeros(n_landmarks+1, 3, 3);
+            pi_k    = zeros(n_landmarks+1, 1);
+            
+            % create temporary new landmark at observed position
+            temp_mark = [stateMeanBar(1) + z(1,k) * cos(z(2,k) + stateMeanBar(3));
+                         stateMeanBar(2) + z(1,k) * sin(z(2,k) + stateMeanBar(3));
+                         0]; % z(3,k)]; % not sure whether to include landmark signature
+            stateMeanTemp = [stateMeanBar;
+                             temp_mark];
+            stateCovTemp = [stateCovBar zeros(size(stateCovBar,2),1);
+                            zeros(1,size(stateCovBar,2) + 1)];
+            % initialize covariance for new landmark
+            stateCovTemp(n_landmarks + 4, n_landmarks + 4) = 0.65;
+            
+            % loop over all landmarks  (including the temp landmark)and 
+            % compute likelihood of correspondence with the new landmark
+            % NOTE: could improve by caching predicted observations when
+            %       more than 1 observation occurs at the same timestep
+            for j = 1:n_landmarks+1
+
+                delta = [mu_jx - stateMeanTemp(1);
+                         mu_jy - stateMeanTemp(2)];
+                       
+                q = delta' * delta;
+                r = sqrt(q);
+                
+                predZ(j) = [r;
+                            conBear(atan2(delta(2), delta(1)) - stateMeanTemp(3));
+                            0];
+                F_xk = [eye(3)     zeros(3*j-3) zeros(3,3) zeros(3*n_landmarks+1 - 3*j);
+                        zeros(3,3) zeros(3*j-3) eye(3)     zeros(3*n_landmarks+1 - 3*j)];
+            end
+        end
+    end
 end
