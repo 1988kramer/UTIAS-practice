@@ -77,8 +77,8 @@ for i = start:size(Robots{robot_num}.G, 1)
     
     % calculate movement jacobian
     g_t = [0 0 trans * -sin(theta + halfRot);
-                         0 0 trans * cos(theta + halfRot);
-                         0 0 0];
+           0 0 trans * cos(theta + halfRot);
+           0 0 0];
     G_t = eye(3 * n_landmarks + 3, 3 * n_landmarks + 3) + F_x' * g_t * F_x;
      
     % calculate motion covariance in control space
@@ -91,7 +91,6 @@ for i = start:size(Robots{robot_num}.G, 1)
            0 1];
     
     % update state covariance
-    % not totally sure I'm calculating R_t correctly
     R_t = V_t * M_t * V_t';
     stateCovBar = (G_t * stateCov * G_t') + (F_x' * R_t * F_x);
     
