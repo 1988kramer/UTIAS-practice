@@ -84,34 +84,9 @@ for i = start:size(Robots{robot_num}.G, 1)
         1;
     end
     
-    % build vector of features observed at current time
-    z = zeros(3,1);
-    %
-    while (Robots{robot_num}.M(measurementIndex, 1) - t < .005) && (measurementIndex < size(Robots{robot_num}.M,1))
-        barcode = Robots{robot_num}.M(measurementIndex,2);
-        landmarkID = 0;
-        if (codeDict.isKey(barcode))
-            landmarkID = codeDict(barcode);
-        else
-            disp('key not found');
-        end
-        if landmarkID > 5 && landmarkID < 21
-            range = Robots{robot_num}.M(measurementIndex, 3);
-            bearing = Robots{robot_num}.M(measurementIndex, 4);
-            id = landmarkID;
-            if uint8(z(3)) == 0
-                z = [range;
-                     bearing;
-                     id];
-            else
-                newZ = [range;
-                        bearing;
-                        id];
-                z = [z newZ];
-            end
-        end
-        measurementIndex = measurementIndex + 1;
-    end
+    % get measurements
+    [z, measurementIndex] = getObservations(Robots, robot_num, t, measurementIndex, codeDict);
+    
     S = zeros(size(z,2),3,3);
     zHat = zeros(3, size(z,2));
     

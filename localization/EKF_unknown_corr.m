@@ -29,9 +29,8 @@ t = Robots{robot_num}.G(start, 1);
 poseMean = [Robots{robot_num}.G(start,2);
             Robots{robot_num}.G(start,3);
             Robots{robot_num}.G(start,4)];
-poseCov = [0.01 0.01 0.01;
-           0.01 0.01 0.01;
-           0.01 0.01 0.01];
+poseCov = zeros(3,3);
+poseCov(:,:) = .01;
        
 measurementIndex = 1;
 
@@ -80,32 +79,8 @@ for i = start:size(Robots{robot_num}.G, 1)
         1;
     end
     
-    % build vector of features observed at current time
-    z = zeros(3,1);
-    landmarkID = 0;
-    while (Robots{robot_num}.M(measurementIndex, 1) - t < .005) && (measurementIndex < size(Robots{robot_num}.M,1))
-        barcode = Robots{robot_num}.M(measurementIndex,2);
-        if (codeDict.isKey(barcode))
-            landmarkID = codeDict(barcode);
-        else
-            disp('key not found');
-        end
-        if landmarkID > 5 && landmarkID < 21
-            range = Robots{robot_num}.M(measurementIndex, 3);
-            bearing = Robots{robot_num}.M(measurementIndex, 4);
-            if uint8(z(3)) == 0
-                z = [range;
-                     bearing;
-                     landmarkID];
-            else
-                newZ = [range;
-                        bearing;
-                        landmarkID];
-                z = [z newZ];
-            end
-        end
-        measurementIndex = measurementIndex + 1;
-    end
+    % get measurements
+    [z, measurementIndex] = getObservations(Robots, robot_num, t, measurementIndex, codeDict);
     
     % if features are observed
     % loop over all features and compute Kalman gain
@@ -196,5 +171,5 @@ for i = start:size(Robots{robot_num}.G, 1)
     %}
    
 end
-
-animateMRCLAMdataSet(Robots, Landmark_Groundtruth, timesteps, deltaT);
+disp(missed);
+%animateMRCLAMdataSet(Robots, Landmark_Groundtruth, timesteps, deltaT);
