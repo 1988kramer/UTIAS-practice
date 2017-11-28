@@ -56,5 +56,27 @@ for i = start:size(Robots{robot_num}.G, 1)
                   rot];
               
     % calculate updated state mean
-    % need to take into account that state matrix is variable-size
+    F_x = [eye(3) zeros(3, size(stateMean, 1) - 3)];
+    stateMeanBar = stateMean + F_x' * poseUpdate;
+    
+    % calculate movement jacobian
+    g_t = [0 0 trans * -sin(theta + halfRot);
+           0 0 trans * cos(theta + halfRot);
+           0 0 0];
+    G_t = eye(size(stateMean, 1)) + F_x' * g_t * F_x;
+    
+    % calculate motion covariance in control space
+    M_t = [(alphas(1) * abs(u_t(1)) + alphas(2) * abs(u_t(2)))^2 0;
+           0 (alphas(3) * abs(u_t(1)) + alphas(4) * abs(u_t(2)))^2];
+       
+    % calculate Jacobian to transform motion covariance to state space
+    V_t = [cos(theta + halfRot) -0.5 * sin(theta + halfRot);
+           sin(theta + halfRot) 0.5 * cos(theta + halfRot);
+           0 1];
+    
+    % update state covariance
+    R_t = V_t * M_t * V_t';
+    stateCovBar = (G_t * stateCov * G_t') + (F_x' * R_t * F_x);
+    
+    
 end
