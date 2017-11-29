@@ -1,16 +1,15 @@
 addpath ../common;
 
 deltaT = .02;
-alphas = [.1 .01 .18 .08 0 0]; % motion model noise parameters
+alphas = [13 10 13 10 0 0]; % motion model noise parameters
 
 % measurement model noise parameters
-Q_t = [11.8 0    0;
-       0    .18  0;
+Q_t = [85   0    0;
+       0    102  0;
        0    0    1];
    
 n_robots = 1;
 robot_num = 1;
-n_landmarks = 15;
 [Barcodes, Landmark_Groundtruth, Robots] = loadMRCLAMdataSet(n_robots);
 [Robots, timesteps] = sampleMRCLAMdataSet(Robots, deltaT);
 
@@ -42,7 +41,7 @@ for i = start:size(Robots{robot_num}.G, 1)
     t = Robots{robot_num}.G(i, 1);
     
     % update number of landmarks
-    n_landmarks = size(stateMean, 1) - 3;
+    n_landmarks = (size(stateMean,1) - 3) / 3;
     
     % update movement vector
     u_t = [Robots{robot_num}.O(i, 2); Robots{robot_num}.O(i, 3)];
@@ -89,7 +88,7 @@ for i = start:size(Robots{robot_num}.G, 1)
     if z(3,1) > 1
         for k = 1:size(z, 2) % loop over every observed landmark
 
-            predZ   = zeros(n_landmarks+1, 1, 3);
+            predZ   = zeros(3, n_landmarks+1);
             predPsi = zeros(n_landmarks+1, 3, 3);
             predH   = zeros(n_landmarks+1, 3, 3*(n_landmarks+1)+3);
             pi_k    = zeros(n_landmarks+1, 1);
@@ -100,8 +99,8 @@ for i = start:size(Robots{robot_num}.G, 1)
                          0]; % z(3,k)]; % not sure whether to include landmark signature
             stateMeanTemp = [stateMeanBar;
                              temp_mark];
-            stateCovTemp = [stateCovBar zeros(size(stateCovBar,2),1);
-                            zeros(1,size(stateCovBar,2) + 1)];
+            stateCovTemp = [stateCovBar zeros(size(stateCovBar,2),3);
+                            zeros(3,size(stateCovBar,2) + 3)];
             % initialize covariance for new landmark
             stateCovTemp(n_landmarks + 4, n_landmarks + 4) = 0.65;
             
@@ -110,40 +109,40 @@ for i = start:size(Robots{robot_num}.G, 1)
             % NOTE: could improve by caching predicted observations when
             %       more than 1 observation occurs at the same timestep
             max_j = 0;
-            max_pi = 0;
+            min_pi = 1000;
             for j = 1:n_landmarks+1
 
-                delta = [mu_jx - stateMeanTemp(1);
-                         mu_jy - stateMeanTemp(2)];
+                delta = [stateMeanTemp(3*j+1) - stateMeanTemp(1);
+                         stateMeanTemp(3*j+2) - stateMeanTemp(2)];
                        
                 q = delta' * delta;
                 r = sqrt(q);
                 
-                predZ(j) = [r;
-                            conBear(atan2(delta(2), delta(1)) - stateMeanTemp(3));
-                            0];
-                F_xj = [eye(3)     zeros(3*j-3) zeros(3,3) zeros(3*n_landmarks+1 - 3*j);
-                        zeros(3,3) zeros(3*j-3) eye(3)     zeros(3*n_landmarks+1 - 3*j)];
+                predZ(:,j) = [r;
+                              conBear(atan2(delta(2), delta(1)) - stateMeanTemp(3));
+                              0];
+                F_xj = [eye(3)     zeros(3,3*j-3) zeros(3) zeros(3,3*(n_landmarks+1) - 3*j);
+                        zeros(3)   zeros(3,3*j-3) eye(3)   zeros(3,3*(n_landmarks+1) - 3*j)];
                 
                 
                 h_t = [-r*delta(1) -r*delta(2)  0   r*delta(1) r*delta(2) 0;
                        delta(2)    -delta(1)    -q  -delta(2)  delta(1)   0;
                        0           0            0   0          0          q];
-                predH(j,:,:) = (1/q)*h_t*F_xj;
+                predH(j,:,:) = (1/q) * h_t * F_xj;
                 predPsi(j,:,:) = squeeze(predH(j,:,:)) * stateCovTemp * ...
                                  squeeze(predH(j,:,:))' + Q_t;
                 if j <= n_landmarks
-                    pi_k(j) = (z(:,k)-squeeze(predZ(j,:,:)))'...
+                    pi_k(j) = (z(:,k)-predZ(:,j))'...
                               * inv(squeeze(predPsi(j,:,:)))...
-                              *(z(:,k)-squeeze(predZ(j,:,:)));
+                              *(z(:,k)-predZ(:,j));
                 else
-                    pi_k(j) = 10; % alpha: min mahalanobis distance to
-                                  %        add landmark to map
+                    pi_k(j) = 137; % alpha: min mahalanobis distance to
+                                   %        add landmark to map
                 end
                 
-                if pi_k(j) > max_pi
+                if pi_k(j) < min_pi
                     max_j = j;
-                    max_pi = pi_k(j);
+                    min_pi = pi_k(j);
                 end
             end
             
@@ -154,16 +153,17 @@ for i = start:size(Robots{robot_num}.G, 1)
             if max_j > n_landmarks
                 stateMeanBar = stateMeanTemp;
                 stateCovBar = stateCovTemp;
+                n_landmarks = n_landmarks + 1;
             % if measurement is associated to an existing landmark
             % truncate h matrix to prevent dim mismatch
             else
-                H = H(:,0:n_landmarks*3 + 3);
+                H = H(:,1:n_landmarks*3 + 3);
             end
             
             K = stateCovBar * H' * inv(squeeze(predPsi(max_j,:,:))); 
             
             stateMeanBar = stateMeanBar + K * ...
-                           (z(:,k) - squeeze(predZ(max_j,:,:)));
+                           (z(:,k) - predZ(:,max_j));
             stateCovBar = (eye(size(stateCovBar)) - K * H) * stateCovBar;
         end
     end
@@ -179,4 +179,4 @@ end
 p_loss = path_loss(Robots, robot_num, start);
 disp(p_loss);
 
-animateMRCLAMdataSet(Robots, Landmark_Groundtruth, timesteps, deltaT);
+%animateMRCLAMdataSet(Robots, Landmark_Groundtruth, timesteps, deltaT);
