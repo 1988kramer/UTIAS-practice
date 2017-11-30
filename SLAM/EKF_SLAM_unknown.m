@@ -99,12 +99,14 @@ for i = start:size(Robots{robot_num}.G, 1)
                          0]; % z(3,k)]; % not sure whether to include landmark signature
             stateMeanTemp = [stateMeanBar;
                              temp_mark];
-            stateCovTemp = [stateCovBar zeros(size(stateCovBar,2),3);
+            stateCovTemp = [stateCovBar zeros(size(stateCovBar,1),3);
                             zeros(3,size(stateCovBar,2) + 3)];
             % initialize covariance for new landmark
-            stateCovTemp(n_landmarks + 4, n_landmarks + 4) = 0.65;
+            for ii = (size(stateCovTemp,1)-3):(size(stateCovTemp,1))
+                stateCovTemp(ii,ii) = 0.65;
+            end
             
-            % loop over all landmarks  (including the temp landmark)and 
+            % loop over all landmarks  (including the temp landmark) and 
             % compute likelihood of correspondence with the new landmark
             % NOTE: could improve by caching predicted observations when
             %       more than 1 observation occurs at the same timestep
@@ -127,7 +129,7 @@ for i = start:size(Robots{robot_num}.G, 1)
                 
                 h_t = [-r*delta(1) -r*delta(2)  0   r*delta(1) r*delta(2) 0;
                        delta(2)    -delta(1)    -q  -delta(2)  delta(1)   0;
-                       0           0            0   0          0          q];
+                       0           0            0   0          0          1];
                 predH(j,:,:) = (1/q) * h_t * F_xj;
                 predPsi(j,:,:) = squeeze(predH(j,:,:)) * stateCovTemp * ...
                                  squeeze(predH(j,:,:))' + Q_t;
@@ -136,7 +138,7 @@ for i = start:size(Robots{robot_num}.G, 1)
                               * inv(squeeze(predPsi(j,:,:)))...
                               *(z(:,k)-predZ(:,j));
                 else
-                    pi_k(j) = 137; % alpha: min mahalanobis distance to
+                    pi_k(j) = 224.9; % alpha: min mahalanobis distance to
                                    %        add landmark to map
                 end
                 
@@ -164,7 +166,7 @@ for i = start:size(Robots{robot_num}.G, 1)
             
             stateMeanBar = stateMeanBar + K * ...
                            (z(:,k) - predZ(:,max_j));
-            stateCovBar = (eye(size(stateCovBar)) - K * H) * stateCovBar;
+            stateCovBar = (eye(size(stateCovBar)) - (K * H)) * stateCovBar;
         end
     end
     
