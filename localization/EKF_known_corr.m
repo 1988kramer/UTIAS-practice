@@ -1,9 +1,8 @@
 addpath ../common;
 
 deltaT = .02;
-alphas = [.2 .03 .09 .08 0 0]; % need to figure out how to set these
+alphas = [.2 .03 .09 .08 0 0]; 
 
-% also don't know how to calculate the measurement noise std_dev
 sigma_range = 2;
 sigma_bearing = 3;
 sigma_id = 1;
