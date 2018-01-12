@@ -1,5 +1,4 @@
-addpath ../common; % adds support functions used in all my EKF programs
-                   % check my github for details
+addpath ../common;
 
 deltaT = .02; 
 alphas = [.2 .03 .09 .08 0 0]; % robot-dependent motion noise parameters
@@ -43,7 +42,7 @@ poseCov = [0.01 0.01 0.01;
            0.01 0.01 0.01];
        
 % tracks which measurement is next received
-measurementIndex = 1;
+measurementIndex = 0;
 
 % set up map between barcodes and landmark IDs
 codeDict = containers.Map(Barcodes(:,2),Barcodes(:,1));
@@ -107,49 +106,59 @@ for i = start:size(Robots{robot_num}.G, 1)
             j = z(3,k);
 
             % get coordinates of the measured landmark
-            m = Landmark_Groundtruth(j, 2:3);
+            m = Landmark_Groundtruth(j - 5, 2:3);
 
             % compute the expected measurement per equations 6 and 7
             xDist = m(1) - poseMeanBar(1);
             yDist = m(2) - poseMeanBar(2);
             q = xDist^2 + yDist^2;
             
-            % constrains expected bearing to between 0 and 2*pi
             pred_bear = conBear(atan2(yDist, xDist) - poseMeanBar(3));
             
             zHat(:,k) = [sqrt(q);
                          pred_bear;
                          j];
 
-            % calculate Jacobian of the measurement model per equation 8
+            % calculate Jacobian of the mea (line 13)
             H = [(-1 * (xDist / sqrt(q))) (-1 * (yDist / sqrt(q))) 0;
                  (yDist / q) (-1 * (xDist / q)) -1;
                  0 0 0];
-             
-            % compute S per equation 9
             S(k,:,:) = H * poseCovBar * H' + Q_t;
 
-            % compute Kalman gain per equation 10
+            % compute Kalman gain
             K = poseCov * H' * inv(squeeze(S(k,:,:)));
-                
+            %K = squeeze(S(k,:,:)) \ (poseCovBar * H'); % may be equivalent to above
+            xAct = m(1)-Robots{robot_num}.G(i,2);
+            yAct = m(2)-Robots{robot_num}.G(i,3);
+            zAct = [sqrt(xAct^2 + yAct^2);
+                    atan2(yAct, xAct) - Robots{robot_num}.G(i,4);
+                    j];
             % update pose mean and covariance estimates
-            % per equations 11 and 12
             poseMeanBar = poseMeanBar + K * (z(:,k) - zHat(:,k));
             poseCovBar = (eye(3) - (K * H)) * poseCovBar;
         end
     end
-    
+    %
     % update pose mean and covariance
-    % constrains heading to between 0 and 2*pi
     poseMean = poseMeanBar;
     poseMean(3) = conBear(poseMean(3));
     poseCov = poseCovBar;
+    %{
+    % calculate measurement probability
+    measurementProb = 1;
+    if z(3,1) > 1
+        for k = 1:size(z,2)
+            detS = det(2 * pi * squeeze(S(k,:,:)))^(-0.5);
+            expErr = exp(-0.5 * (z(:,k) - zHat(:,k))' * inv(squeeze(S(k,:,:))) * (z(:,k) - zHat(:,k)));
+            %expErr = exp(-0.5 * (squeeze(S(k,:,:)) \ (z(:,k) - zHat(:,k))') * (z(:,k) - zHat(:,k)));
+            measurementProb = measurementProb * detS * expErr;
+        end
+    end
+    %}
     
     % add pose mean to estimated position vector
     Robots{robot_num}.Est(i,:) = [t poseMean(1) poseMean(2) poseMean(3)];
-    
     % calculate error between mean pose and groundtruth
-    % for testing only
     %{
     groundtruth = [Robots{robot_num}.G(i, 2); 
                    Robots{robot_num}.G(i, 3); 
@@ -159,5 +168,4 @@ for i = start:size(Robots{robot_num}.G, 1)
    
 end
 
-% display results!
 animateMRCLAMdataSet(Robots, Landmark_Groundtruth, timesteps, deltaT);
