@@ -135,6 +135,5 @@ function [Robots, timesteps] = sampleMRCLAMdataSet(Robots, sample_time)
     end
 
     clear min_time oldData newData nr nc n p sc t k c i d array_names name;
-    disp('Sampling Complete');
 end
 

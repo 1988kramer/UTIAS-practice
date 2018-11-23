@@ -51,5 +51,4 @@ function [Barcodes, Landmark_Groundtruth, Robots] = loadMRCLAMdataSet(n_robots)
 
     end
     clear i
-    disp('Parsing Complete')
 end
